@@ -83,12 +83,18 @@ class OneDriveService {
                     results.push(...subResults);
                 } else if (item.file) {
                     const name = item.name.toLowerCase();
+                    // Filtriamo file "principale" o nomi simili che non servono come asset
+                    if (name.includes('principale')) continue;
+                    
                     if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.svg')) {
+                        // Se il percorso contiene METAL, lo marchiamo nel nome della cartella
+                        const folderName = folderPath.toUpperCase().includes('METAL') ? 'METAL' : (folderPath.split('/').pop() || 'Principale');
+                        
                         results.push({
                             id: item.id,
                             name: item.name,
                             path: item.id,
-                            folder: folderPath.split('/').pop() || 'Principale',
+                            folder: folderName,
                             downloadUrl: item['@microsoft.graph.downloadUrl']
                         });
                     }
@@ -109,19 +115,24 @@ class OneDriveService {
             const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
+                // Escludiamo GRAFICHE e file sciolti (come PRINCIPALE.png) nella radice dei prodotti
                 if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
                     const components = {};
                     const compItems = await client.api(`/me/drive/items/${rootId}:/${item.name}:/children`).get();
                     for (const cDir of compItems.value) {
                         if (cDir.folder) {
                             const assets = await this.walkFolder(`${item.name}/${cDir.name}`);
-                            components[cDir.name] = assets.map(asset => ({
-                                ...asset,
-                                fullPath: `/api/onedrive/file/${asset.id}`
-                            }));
+                            if (assets.length > 0) {
+                                components[cDir.name] = assets.map(asset => ({
+                                    ...asset,
+                                    fullPath: `/api/onedrive/file/${asset.id}`
+                                }));
+                            }
                         }
                     }
-                    products.push({ id: item.name, name: item.name.toUpperCase(), components });
+                    if (Object.keys(components).length > 0) {
+                        products.push({ id: item.name, name: item.name.toUpperCase(), components });
+                    }
                 }
             }
             return products;
