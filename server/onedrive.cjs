@@ -56,18 +56,14 @@ class OneDriveService {
         if (this.rootId) return this.rootId;
         
         const client = await this.getClient();
-        console.log('Ricerca globale della cartella MOCKUP...');
-        
         const searchResult = await client.api('/me/drive/root/search(q=\'MOCKUP\')').get();
         const folder = searchResult.value.find(item => item.folder);
 
         if (!folder) {
-            console.error('ERRORE: Nessuna cartella MOCKUP trovata!');
             throw new Error('Cartella principale non trovata');
         }
 
         this.rootId = folder.id;
-        console.log(`Cartella identificata: ${folder.name} (ID: ${folder.id})`);
         return this.rootId;
     }
 
@@ -75,20 +71,15 @@ class OneDriveService {
         const client = await this.getClient();
         const rootId = await this.findRootId();
         try {
-            // Proviamo a cercare la cartella in modo case-insensitive
             const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
             const targetFolder = parentItems.value.find(item => 
                 item.folder && item.name.toUpperCase() === folderPath.toUpperCase()
             );
 
-            if (!targetFolder) {
-                console.warn(`Cartella ${folderPath} non trovata in questo percorso.`);
-                return [];
-            }
+            if (!targetFolder) return [];
 
-            return await this._recursiveWalk(targetFolder.id, '');
+            return await this._recursiveWalk(targetFolder.id, folderPath);
         } catch (error) {
-            console.error(`ERROR walkFolder ${folderPath}:`, error.message);
             return [];
         }
     }
@@ -100,7 +91,7 @@ class OneDriveService {
             const items = await client.api(`/me/drive/items/${itemId}/children`).get();
             for (const item of items.value) {
                 if (item.folder) {
-                    const subResults = await this._recursiveWalk(item.id, currentPath ? `${currentPath}/${item.name}` : item.name);
+                    const subResults = await this._recursiveWalk(item.id, `${currentPath}/${item.name}`);
                     results.push(...subResults);
                 } else if (item.file) {
                     const name = item.name.toLowerCase();
@@ -110,9 +101,9 @@ class OneDriveService {
                         results.push({
                             id: item.id,
                             name: item.name,
-                            path: item.id, // Usiamo l'ID per il fetch
-                            fullPath: `/api/onedrive/file/${item.id}`,
-                            folder: currentPath.split('/').pop() || 'Principale'
+                            path: item.id,
+                            fullPath: `/api/onedrive/file/${item.id}?name=${encodeURIComponent(item.name)}`,
+                            folder: currentPath // Mantiamo il percorso completo per la categorizzazione METAL
                         });
                     }
                 }
@@ -149,7 +140,6 @@ class OneDriveService {
             }
             return products;
         } catch (error) {
-            console.error('ERROR getProducts:', error.message);
             throw error;
         }
     }

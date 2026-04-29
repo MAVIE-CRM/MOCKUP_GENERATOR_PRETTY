@@ -1,13 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const axios = require('axios');
 
 const app = express();
 const port = process.env.PORT || 3005;
 
-// Sistema di Cache in memoria per le immagini di OneDrive
 const imageCache = new Map();
-const CACHE_TTL = 1000 * 60 * 60; // 1 ora
+const CACHE_TTL = 1000 * 60 * 60;
+
+function getContentType(fileName) {
+    const ext = path.extname(fileName).toLowerCase();
+    switch (ext) {
+        case '.svg': return 'image/svg+xml';
+        case '.jpg':
+        case '.jpeg': return 'image/jpeg';
+        case '.png': return 'image/png';
+        default: return 'application/octet-stream';
+    }
+}
 
 async function startServer() {
     try {
@@ -24,7 +35,6 @@ async function startServer() {
         const onedrive = require('./onedrive.cjs');
 
         app.get('/', (req, res) => {
-            console.log('HEALTH CHECK RECEIVED! ✅');
             res.status(200).send('OK - SERVER IS ALIVE');
         });
 
@@ -48,8 +58,8 @@ async function startServer() {
 
         app.get('/api/onedrive/file/:id', async (req, res) => {
             const fileId = req.params.id;
+            const fileName = req.query.name || 'file.png';
             
-            // Verifica Cache
             const cached = imageCache.get(fileId);
             if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
                 res.setHeader('Content-Type', cached.contentType);
@@ -61,9 +71,8 @@ async function startServer() {
                 const client = await onedrive.getClient();
                 const response = await client.api(`/me/drive/items/${fileId}/content`).get();
                 
-                // Convertiamo in Buffer per la cache
                 const buffer = Buffer.isBuffer(response) ? response : Buffer.from(await response.arrayBuffer());
-                const contentType = 'image/png'; // Default per i nostri asset
+                const contentType = getContentType(fileName);
 
                 imageCache.set(fileId, {
                     data: buffer,
@@ -75,12 +84,10 @@ async function startServer() {
                 res.setHeader('Cache-Control', 'public, max-age=3600');
                 res.send(buffer);
             } catch (error) {
-                console.error(`Errore proxy file ${fileId}:`, error.message);
-                res.status(500).send('Errore nel recupero del file');
+                res.status(500).send('Errore recupero file');
             }
         });
 
-        // Proxy per Flora AI (per evitare CORS lato client)
         app.post('/api/flora/generate', async (req, res) => {
             try {
                 const response = await axios.post('https://api.flora.ai/v1/generate', req.body, {
@@ -92,16 +99,11 @@ async function startServer() {
             }
         });
 
-        setInterval(() => {
-            console.log(`Server Heartbeat: ${new Date().toLocaleTimeString()} - Cache Size: ${imageCache.size} items`);
-        }, 10000);
-
         app.listen(port, '0.0.0.0', () => {
             console.log(`PRETTY STUDIO BACKEND ONLINE - Port: ${port}`);
         });
 
     } catch (err) {
-        console.error('CRITICAL STARTUP ERROR:', err);
         process.exit(1);
     }
 }
