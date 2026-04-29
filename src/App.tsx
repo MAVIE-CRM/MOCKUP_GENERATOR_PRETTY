@@ -382,9 +382,9 @@ function App() {
         origin: { y: 0.8 }, 
         colors: ['#6366f1', '#10b981', '#f59e0b'] 
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("SmartFit Error:", err);
-      setFloraStatus(`Errore: ${err.message}`);
+      setFloraStatus(`Errore: ${err.message || 'Sconosciuto'}`);
       setTimeout(() => setFloraStatus(''), 4000);
     }
   };
