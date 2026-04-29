@@ -78,10 +78,13 @@ try {
         console.log(`Server Heartbeat: ${new Date().toLocaleTimeString()} - Still alive! ❤️`);
     }, 5000);
 
-    app.listen(port, () => {
+    const host = process.env.RAILWAY_STATIC_URL ? '0.0.0.0' : 'localhost';
+
+    app.listen(port, '0.0.0.0', () => {
       console.log('-----------------------------------------');
       console.log(`PRETTY STUDIO BACKEND IS ONLINE`);
       console.log(`Port: ${port}`);
+      console.log(`Host: 0.0.0.0`);
       console.log(`Time: ${new Date().toISOString()}`);
       console.log('-----------------------------------------');
     });
