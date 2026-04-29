@@ -238,23 +238,32 @@ function App() {
       const currentName = asset.name.toUpperCase();
       const currentFolder = asset.folder.toUpperCase();
       
-      const isL = currentName.includes('_L') || currentFolder.includes('LISCIO');
-      const isA = currentName.includes('_A') || currentFolder.includes('AMM');
+      // Determiniamo in che stato siamo ora (Liscio o Amm)
+      const isL = currentFolder.includes('LISCIO') || currentName.includes('_L');
+      const isA = currentFolder.includes('AMM') || currentName.includes('_A');
 
       if (isL || isA) {
-        const fromSuffix = isL ? '_L' : '_A';
-        const toSuffix = isL ? '_A' : '_L';
-        const targetFolderPart = isL ? 'AMM' : 'LISCIO';
+        // Se siamo in Liscio, andiamo verso Amm. Se siamo in Amm, andiamo verso Liscio.
+        // Diamo la priorità allo stato attuale basandoci sulla cartella se possibile
+        const movingToAmm = currentFolder.includes('LISCIO') || (isL && !currentFolder.includes('AMM'));
         
-        // Calcoliamo il nome esatto che stiamo cercando (es. PLS_NERO_L -> PLS_NERO_A)
+        const fromSuffix = movingToAmm ? '_L' : '_A';
+        const toSuffix = movingToAmm ? '_A' : '_L';
+        const targetFolderPart = movingToAmm ? 'AMM' : 'LISCIO';
+        
         const expectedName = currentName.replace(fromSuffix, toSuffix);
-        
         const possibleAssets = selectedProduct.components[cName];
+        
         const target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
           const aFolder = a.folder.toUpperCase();
-          // Deve avere il nome esatto calcolato E trovarsi nella cartella corretta
           return aName === expectedName && aFolder.includes(targetFolderPart);
+        }) || possibleAssets.find(a => {
+          // Fallback: stesso nome senza estensione nella cartella target
+          const aName = a.name.toUpperCase().split('.')[0];
+          const currBase = currentName.split('.')[0].replace('_L', '').replace('_A', '');
+          const targetBase = aName.replace('_L', '').replace('_A', '');
+          return targetBase === currBase && a.folder.toUpperCase().includes(targetFolderPart);
         });
 
         if (target) {
@@ -266,7 +275,7 @@ function App() {
 
     if (switched) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 }, colors: ['#6366f1', '#a855f7'] });
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
     }
   };
 
