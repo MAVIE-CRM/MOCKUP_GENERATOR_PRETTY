@@ -431,7 +431,7 @@ function App() {
       setFloraStatus('Generazione in corso (Flora AI)...');
 
       const poll = async () => {
-        const result = await floraService.pollStatus(runId, 'rotazione360');
+        const result = await floraService.pollStatus(runId);
         setFloraResult(result);
 
         if (result.status === 'completed') {

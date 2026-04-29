@@ -52,7 +52,7 @@ export const floraService = {
   /**
    * Controlla lo stato della generazione
    */
-  async pollStatus(runId: string, technique: string): Promise<FloraResponse> {
+  async pollStatus(runId: string): Promise<FloraResponse> {
     try {
       const pass = localStorage.getItem('pretty_auth') || '';
       const response = await axios.get(`${BASE_URL}/status/${runId}`, {
