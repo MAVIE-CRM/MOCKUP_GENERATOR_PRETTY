@@ -56,17 +56,24 @@ class OneDriveService {
         if (this.rootId) return this.rootId;
         
         const client = await this.getClient();
-        console.log('Ricerca globale della cartella MOCKUP...');
+        console.log('Ricerca della cartella MOCKUP v2...');
         
         const searchResult = await client.api('/me/drive/root/search(q=\'MOCKUP\')').get();
-        const folder = searchResult.value.find(item => item.folder);
+        
+        let folder = searchResult.value.find(item => 
+            item.folder && item.name.toUpperCase().includes('V2')
+        );
+
+        if (!folder) {
+            folder = searchResult.value.find(item => item.folder);
+        }
 
         if (!folder) {
             throw new Error('Cartella principale non trovata');
         }
 
         this.rootId = folder.id;
-        console.log(`Cartella identificata: ${folder.name} (ID: ${folder.id})`);
+        console.log(`CARTELLA UTILIZZATA: ${folder.name} (ID: ${folder.id})`);
         return this.rootId;
     }
 
@@ -77,7 +84,7 @@ class OneDriveService {
             const items = await client.api(`/me/drive/items/${itemId}/children`).get();
             for (const item of items.value) {
                 if (item.folder) {
-                    const subResults = await this._recursiveWalk(item.id, `${currentPath}/${item.name}`);
+                    const subResults = await this._recursiveWalk(item.id, currentPath ? `${currentPath}/${item.name}` : item.name);
                     results.push(...subResults);
                 } else if (item.file) {
                     const name = item.name.toLowerCase();
@@ -89,14 +96,14 @@ class OneDriveService {
                             name: item.name,
                             path: item.id,
                             fullPath: `/api/onedrive/file/${item.id}?name=${encodeURIComponent(item.name)}`,
-                            folder: currentPath
+                            folder: currentPath.split('/').pop() || 'Principale'
                         });
                     }
                 }
             }
             return results;
         } catch (e) {
-            console.error(`Error in recursive walk for ${itemId}:`, e.message);
+            console.error(`Error in walk for ${itemId}:`, e.message);
             return [];
         }
     }
@@ -109,31 +116,25 @@ class OneDriveService {
             const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
-                if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
+                if (item.folder && item.name.toUpperCase().includes('GRAFICHE') === false) {
                     const components = {};
                     try {
                         const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
                         for (const cDir of compItems.value) {
                             if (cDir.folder) {
                                 const assets = await this._recursiveWalk(cDir.id, cDir.name);
-                                components[cDir.name] = assets;
+                                if (assets.length > 0) {
+                                    components[cDir.name] = assets;
+                                }
                             }
                         }
-                    } catch (e) {
-                        console.warn(`Could not load components for ${item.name}`);
-                    }
-                    
-                    // Mostriamo il prodotto ANCHE SE è vuoto
-                    products.push({ 
-                        id: item.name, 
-                        name: item.name.toUpperCase(), 
-                        components 
-                    });
+                    } catch (e) {}
+                    products.push({ id: item.name, name: item.name.toUpperCase(), components });
                 }
             }
             return products;
         } catch (error) {
-            console.error('ERROR getProducts:', error.message);
+            console.error('getProducts Error:', error.message);
             throw error;
         }
     }
@@ -144,13 +145,19 @@ class OneDriveService {
         try {
             const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
             const targetFolder = parentItems.value.find(item => 
-                item.folder && item.name.toUpperCase() === 'GRAFICHE'
+                item.folder && item.name.toUpperCase().includes('GRAFICHE')
             );
 
-            if (!targetFolder) return [];
+            if (!targetFolder) {
+                console.warn('GRAFICHE not found in root.');
+                return [];
+            }
 
-            return await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
+            const results = await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
+            console.log(`Grafiche trovate: ${results.length}`);
+            return results;
         } catch (error) {
+            console.error('getGrafiche Error:', error.message);
             return [];
         }
     }
