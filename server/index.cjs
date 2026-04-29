@@ -15,6 +15,7 @@ const onedrive = require('./onedrive.cjs');
 
 // Health Check fondamentale per Railway
 app.get('/', (req, res) => {
+    console.log('HEALTH CHECK RECEIVED! ✅');
     res.status(200).send('OK');
 });
 
