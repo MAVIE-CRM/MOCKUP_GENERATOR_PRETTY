@@ -6,19 +6,9 @@ const axios = require('axios');
 const app = express();
 const port = process.env.PORT || 3005;
 
-const imageCache = new Map();
-const CACHE_TTL = 1000 * 60 * 60;
-
-function getContentType(fileName) {
-    const ext = path.extname(fileName).toLowerCase();
-    switch (ext) {
-        case '.svg': return 'image/svg+xml';
-        case '.jpg':
-        case '.jpeg': return 'image/jpeg';
-        case '.png': return 'image/png';
-        default: return 'application/octet-stream';
-    }
-}
+// Cache per i downloadUrl (scadono dopo 1 ora)
+const urlCache = new Map();
+const URL_TTL = 1000 * 60 * 55; // 55 minuti per sicurezza
 
 async function startServer() {
     try {
@@ -58,33 +48,32 @@ async function startServer() {
 
         app.get('/api/onedrive/file/:id', async (req, res) => {
             const fileId = req.params.id;
-            const fileName = req.query.name || 'file.png';
             
-            const cached = imageCache.get(fileId);
-            if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-                res.setHeader('Content-Type', cached.contentType);
-                res.setHeader('Cache-Control', 'public, max-age=3600');
-                return res.send(cached.data);
+            // Verifica se abbiamo un URL fresco in cache
+            const cached = urlCache.get(fileId);
+            if (cached && (Date.now() - cached.timestamp < URL_TTL)) {
+                return res.redirect(cached.url);
             }
 
             try {
                 const client = await onedrive.getClient();
-                const response = await client.api(`/me/drive/items/${fileId}/content`).get();
-                
-                const buffer = Buffer.isBuffer(response) ? response : Buffer.from(await response.arrayBuffer());
-                const contentType = getContentType(fileName);
+                // Recuperiamo solo i metadati, incluso il downloadUrl
+                const fileMetadata = await client.api(`/me/drive/items/${fileId}`).get();
+                const downloadUrl = fileMetadata['@microsoft.graph.downloadUrl'];
 
-                imageCache.set(fileId, {
-                    data: buffer,
-                    contentType: contentType,
+                if (!downloadUrl) throw new Error('Download URL non trovato');
+
+                // Salviamo in cache
+                urlCache.set(fileId, {
+                    url: downloadUrl,
                     timestamp: Date.now()
                 });
 
-                res.setHeader('Content-Type', contentType);
-                res.setHeader('Cache-Control', 'public, max-age=3600');
-                res.send(buffer);
+                // Reindirizziamo il browser direttamente alla sorgente Microsoft
+                res.redirect(downloadUrl);
             } catch (error) {
-                res.status(500).send('Errore recupero file');
+                console.error(`Errore redirect file ${fileId}:`, error.message);
+                res.status(500).send('Errore nel recupero del file');
             }
         });
 
@@ -100,7 +89,7 @@ async function startServer() {
         });
 
         app.listen(port, '0.0.0.0', () => {
-            console.log(`PRETTY STUDIO BACKEND ONLINE - Port: ${port}`);
+            console.log(`PRETTY STUDIO BACKEND ONLINE - Speed Mode Active 🚀`);
         });
 
     } catch (err) {
