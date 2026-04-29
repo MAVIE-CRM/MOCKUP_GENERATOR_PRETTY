@@ -64,7 +64,9 @@ function App() {
       try {
         setConnectionError(null);
         // Fetch Prodotti
-        const pRes = await fetch(config.endpoints.products);
+        const pRes = await fetch(config.endpoints.products, {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
         if (!pRes.ok) throw new Error(`Errore Server Prodotti: ${pRes.status}`);
         const pData: Product[] = await pRes.json();
         setProducts(pData);
@@ -82,7 +84,9 @@ function App() {
         }
 
         // Fetch Grafiche
-        const gRes = await fetch(config.endpoints.grafiche);
+        const gRes = await fetch(config.endpoints.grafiche, {
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
         if (!gRes.ok) throw new Error(`Errore Server Grafiche: ${gRes.status}`);
         const gData: GraphicAsset[] = await gRes.json();
         setGraficheList(gData);
@@ -165,6 +169,24 @@ function App() {
     extract();
   }, [selectedProduct]);
 
+  // Pre-caricamento intelligente degli asset
+  useEffect(() => {
+    if (!selectedProduct) return;
+    
+    const preload = () => {
+      Object.values(selectedProduct.components).forEach(assets => {
+        assets.forEach(asset => {
+          const img = new Image();
+          img.src = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+        });
+      });
+    };
+    
+    // Piccolo delay per non rallentare l'avvio iniziale
+    const timer = setTimeout(preload, 1000);
+    return () => clearTimeout(timer);
+  }, [selectedProduct]);
+
   const getAssetStyle = (asset: ComponentAsset) => {
     const colorKey = `${selectedProductId}_${asset.path}`;
     const bgColor = assetColors[colorKey];
@@ -201,6 +223,30 @@ function App() {
         [componentName]: asset
       }
     }));
+  };
+
+  const handleSmartSwitch = (componentName: string) => {
+    const currentAsset = selections[selectedProductId]?.[componentName];
+    if (!currentAsset || !selectedProduct) return;
+
+    const currentFolder = currentAsset.folder.toUpperCase();
+    const isLiscio = currentFolder.includes('LISCIO');
+    const isAmm = currentFolder.includes('AMM');
+    
+    if (!isLiscio && !isAmm) return;
+
+    const targetFolderPart = isLiscio ? 'AMM' : 'LISCIO';
+    const assets = selectedProduct.components[componentName];
+    
+    // Cerchiamo l'asset con lo stesso nome (colore) nella categoria opposta
+    const targetAsset = assets.find(a => 
+      a.folder.toUpperCase().includes(targetFolderPart) && 
+      a.name === currentAsset.name
+    );
+
+    if (targetAsset) {
+      handleSelection(componentName, targetAsset);
+    }
   };
 
   const getUniqueAssets = (assets: ComponentAsset[]) => {
@@ -357,6 +403,7 @@ function App() {
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               const categories = Array.from(new Set(assets.map(a => {
                 const parts = a.folder.split(/[/\\]/);
+                // Se l'ultima parte è METAL, la categoria è la penultima (es. TAPPI)
                 if (parts[parts.length - 1].toUpperCase() === 'METAL') return parts[parts.length - 2]?.toUpperCase() || 'PRINCIPALE';
                 return parts[parts.length - 1].toUpperCase();
               }))).filter(c => c && c !== 'METAL').sort();
@@ -371,7 +418,7 @@ function App() {
 
               const metalAssets = assets.filter(a => {
                 const folder = a.folder.toUpperCase();
-                return folder.includes(currentCategory) && folder.endsWith('METAL');
+                return folder.includes(currentCategory) && folder.includes('METAL');
               });
 
               const uniqueStandard = getUniqueAssets(categoryAssets);
@@ -379,12 +426,20 @@ function App() {
 
               return (
                 <section key={cName} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
+                      {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
+                        <button 
+                          onClick={() => handleSmartSwitch(cName)}
+                          className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
+                        >
+                          Switch {currentCategory.includes('LISCIO') ? 'Amm' : 'Liscio'}
+                        </button>
+                      )}
+                    </div>
                     {categories.length > 1 && (
                       <span className="text-[8px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">{currentCategory}</span>
                     )}
-                  </div>
 
                   {categories.length > 1 && (
                     <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl">
@@ -512,10 +567,14 @@ function App() {
                   onClick={async () => {
                     setFloraStatus('Aggiornamento asset...');
                     try {
-                      const pRes = await fetch(config.endpoints.products);
+                      const pRes = await fetch(config.endpoints.products, {
+                        headers: { 'ngrok-skip-browser-warning': 'true' }
+                      });
                       const pData = await pRes.json();
                       setProducts(pData);
-                      const gRes = await fetch(config.endpoints.grafiche);
+                      const gRes = await fetch(config.endpoints.grafiche, {
+                        headers: { 'ngrok-skip-browser-warning': 'true' }
+                      });
                       const gData = await gRes.json();
                       setGraficheList(gData);
                       setFloraStatus('Asset aggiornati');
