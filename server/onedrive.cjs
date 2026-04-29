@@ -56,6 +56,8 @@ class OneDriveService {
         if (this.rootId) return this.rootId;
         
         const client = await this.getClient();
+        console.log('Ricerca globale della cartella MOCKUP...');
+        
         const searchResult = await client.api('/me/drive/root/search(q=\'MOCKUP\')').get();
         const folder = searchResult.value.find(item => item.folder);
 
@@ -64,24 +66,8 @@ class OneDriveService {
         }
 
         this.rootId = folder.id;
+        console.log(`Cartella identificata: ${folder.name} (ID: ${folder.id})`);
         return this.rootId;
-    }
-
-    async walkFolder(folderPath) {
-        const client = await this.getClient();
-        const rootId = await this.findRootId();
-        try {
-            const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
-            const targetFolder = parentItems.value.find(item => 
-                item.folder && item.name.toUpperCase() === folderPath.toUpperCase()
-            );
-
-            if (!targetFolder) return [];
-
-            return await this._recursiveWalk(targetFolder.id, folderPath);
-        } catch (error) {
-            return [];
-        }
     }
 
     async _recursiveWalk(itemId, currentPath) {
@@ -103,13 +89,14 @@ class OneDriveService {
                             name: item.name,
                             path: item.id,
                             fullPath: `/api/onedrive/file/${item.id}?name=${encodeURIComponent(item.name)}`,
-                            folder: currentPath // Mantiamo il percorso completo per la categorizzazione METAL
+                            folder: currentPath
                         });
                     }
                 }
             }
             return results;
         } catch (e) {
+            console.error(`Error in recursive walk for ${itemId}:`, e.message);
             return [];
         }
     }
@@ -124,28 +111,48 @@ class OneDriveService {
             for (const item of subItems.value) {
                 if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
                     const components = {};
-                    const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
-                    for (const cDir of compItems.value) {
-                        if (cDir.folder) {
-                            const assets = await this._recursiveWalk(cDir.id, cDir.name);
-                            if (assets.length > 0) {
+                    try {
+                        const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
+                        for (const cDir of compItems.value) {
+                            if (cDir.folder) {
+                                const assets = await this._recursiveWalk(cDir.id, cDir.name);
                                 components[cDir.name] = assets;
                             }
                         }
+                    } catch (e) {
+                        console.warn(`Could not load components for ${item.name}`);
                     }
-                    if (Object.keys(components).length > 0) {
-                        products.push({ id: item.name, name: item.name.toUpperCase(), components });
-                    }
+                    
+                    // Mostriamo il prodotto ANCHE SE è vuoto
+                    products.push({ 
+                        id: item.name, 
+                        name: item.name.toUpperCase(), 
+                        components 
+                    });
                 }
             }
             return products;
         } catch (error) {
+            console.error('ERROR getProducts:', error.message);
             throw error;
         }
     }
 
     async getGrafiche() {
-        return await this.walkFolder('GRAFICHE');
+        const client = await this.getClient();
+        const rootId = await this.findRootId();
+        try {
+            const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
+            const targetFolder = parentItems.value.find(item => 
+                item.folder && item.name.toUpperCase() === 'GRAFICHE'
+            );
+
+            if (!targetFolder) return [];
+
+            return await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
+        } catch (error) {
+            return [];
+        }
     }
 
     async getFileStream(fileId) {
