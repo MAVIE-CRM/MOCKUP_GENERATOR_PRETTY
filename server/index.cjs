@@ -1,95 +1,109 @@
-try {
-    require('dotenv').config();
-    const express = require('express');
-    const cors = require('cors');
-    const axios = require('axios');
-    const fs = require('fs');
-    const path = require('path');
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
 
-    console.log('--- DEBUG CONFIG ---');
-    console.log('Current Dir:', process.cwd());
-    console.log('.env path:', path.join(process.cwd(), '.env'));
-    console.log('OneDrive Token exists:', !!process.env.ONEDRIVE_REFRESH_TOKEN);
-    console.log('---------------------');
+const app = express();
+const port = process.env.PORT || 3005;
 
-    const app = express();
-    const port = process.env.PORT || 4000;
+// Sistema di Cache in memoria per le immagini di OneDrive
+const imageCache = new Map();
+const CACHE_TTL = 1000 * 60 * 60; // 1 ora
 
-    app.use(cors());
-    app.use(express.json({ limit: '50mb' }));
+async function startServer() {
+    try {
+        require('dotenv').config();
 
-    // Middleware per bypassare l'avviso di Ngrok sulle chiamate API
-    app.use((req, res, next) => {
-        res.setHeader('ngrok-skip-browser-warning', 'true');
-        next();
-    });
+        app.use(cors());
+        app.use(express.json({ limit: '50mb' }));
 
-    const onedrive = require('./onedrive.cjs');
+        app.use((req, res, next) => {
+            res.setHeader('ngrok-skip-browser-warning', 'true');
+            next();
+        });
 
-    // Health Check fondamentale per Railway
-    app.get('/', (req, res) => {
-        console.log('HEALTH CHECK RECEIVED! ✅');
-        res.status(200).send('OK - SERVER IS ALIVE');
-    });
+        const onedrive = require('./onedrive.cjs');
 
-    app.get('/api/grafiche', async (req, res) => {
-        try {
-            if (process.env.ONEDRIVE_REFRESH_TOKEN) {
-                const filesData = await onedrive.getGrafiche();
-                return res.json(filesData);
-            }
-            res.json([]);
-        } catch (error) {
-            console.error('Errore grafiche:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
+        app.get('/', (req, res) => {
+            console.log('HEALTH CHECK RECEIVED! ✅');
+            res.status(200).send('OK - SERVER IS ALIVE');
+        });
 
-    app.get('/api/products', async (req, res) => {
-        try {
-            if (process.env.ONEDRIVE_REFRESH_TOKEN) {
+        app.get('/api/products', async (req, res) => {
+            try {
                 const products = await onedrive.getProducts();
-                return res.json(products);
+                res.json(products);
+            } catch (error) {
+                res.status(500).json({ error: error.message });
             }
-            res.json([]);
-        } catch (error) {
-            console.error('Errore prodotti:', error);
-            res.status(500).json({ error: error.message });
-        }
-    });
+        });
 
-    app.get('/api/onedrive/file/:id', async (req, res) => {
-        try {
-            const stream = await onedrive.getFileStream(req.params.id);
-            if (stream.pipe) {
-                stream.pipe(res);
-            } else {
-                const buffer = Buffer.from(await stream.arrayBuffer());
+        app.get('/api/grafiche', async (req, res) => {
+            try {
+                const grafiche = await onedrive.getGrafiche();
+                res.json(grafiche);
+            } catch (error) {
+                res.status(500).json({ error: error.message });
+            }
+        });
+
+        app.get('/api/onedrive/file/:id', async (req, res) => {
+            const fileId = req.params.id;
+            
+            // Verifica Cache
+            const cached = imageCache.get(fileId);
+            if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+                res.setHeader('Content-Type', cached.contentType);
+                res.setHeader('Cache-Control', 'public, max-age=3600');
+                return res.send(cached.data);
+            }
+
+            try {
+                const client = await onedrive.getClient();
+                const response = await client.api(`/me/drive/items/${fileId}/content`).get();
+                
+                // Convertiamo in Buffer per la cache
+                const buffer = Buffer.isBuffer(response) ? response : Buffer.from(await response.arrayBuffer());
+                const contentType = 'image/png'; // Default per i nostri asset
+
+                imageCache.set(fileId, {
+                    data: buffer,
+                    contentType: contentType,
+                    timestamp: Date.now()
+                });
+
+                res.setHeader('Content-Type', contentType);
+                res.setHeader('Cache-Control', 'public, max-age=3600');
                 res.send(buffer);
+            } catch (error) {
+                console.error(`Errore proxy file ${fileId}:`, error.message);
+                res.status(500).send('Errore nel recupero del file');
             }
-        } catch (error) {
-            console.error('OneDrive Proxy Error:', error);
-            res.status(500).send('OneDrive Proxy Error');
-        }
-    });
+        });
 
-    // Battito cardiaco per confermare che il server non è congelato
-    setInterval(() => {
-        console.log(`Server Heartbeat: ${new Date().toLocaleTimeString()} - Still alive! ❤️`);
-    }, 5000);
+        // Proxy per Flora AI (per evitare CORS lato client)
+        app.post('/api/flora/generate', async (req, res) => {
+            try {
+                const response = await axios.post('https://api.flora.ai/v1/generate', req.body, {
+                    headers: { 'Authorization': `Bearer ${process.env.FLORA_API_KEY}` }
+                });
+                res.json(response.data);
+            } catch (error) {
+                res.status(500).json({ error: 'Errore Flora AI Proxy' });
+            }
+        });
 
-    const host = process.env.RAILWAY_STATIC_URL ? '0.0.0.0' : 'localhost';
+        setInterval(() => {
+            console.log(`Server Heartbeat: ${new Date().toLocaleTimeString()} - Cache Size: ${imageCache.size} items`);
+        }, 10000);
 
-    app.listen(port, '0.0.0.0', () => {
-      console.log('-----------------------------------------');
-      console.log(`PRETTY STUDIO BACKEND IS ONLINE`);
-      console.log(`Port: ${port}`);
-      console.log(`Host: 0.0.0.0`);
-      console.log(`Time: ${new Date().toISOString()}`);
-      console.log('-----------------------------------------');
-    });
+        app.listen(port, '0.0.0.0', () => {
+            console.log(`PRETTY STUDIO BACKEND ONLINE - Port: ${port}`);
+        });
 
-} catch (globalError) {
-    console.error('CRITICAL STARTUP ERROR:', globalError);
-    process.exit(1);
+    } catch (err) {
+        console.error('CRITICAL STARTUP ERROR:', err);
+        process.exit(1);
+    }
 }
+
+startServer();
