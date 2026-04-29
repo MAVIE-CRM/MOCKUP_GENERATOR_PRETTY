@@ -84,9 +84,24 @@ class OneDriveService {
     async getProducts() {
         const client = await this.getClient();
         try {
-            const items = await client.api('/me/drive/root:/APP_MOCKUP_ASSETS:/children').get();
+            const items = await client.api('/me/drive/root/children').get();
+            console.log('--- ONEDRIVE ROOT FOLDERS ---');
+            items.value.forEach(item => console.log(`- ${item.name} (${item.folder ? 'Folder' : 'File'})`));
+            console.log('------------------------------');
+
             const products = [];
-            for (const item of items.value) {
+            // Cerchiamo la cartella corretta ignorando maiuscole/minuscole
+            const assetsFolder = items.value.find(item => item.name.toUpperCase() === 'APP_MOCKUP_ASSETS' || item.name.toUpperCase() === 'APP_MOCKUP');
+            
+            if (!assetsFolder) {
+                console.error('ERRORE: Cartella APP_MOCKUP_ASSETS non trovata su OneDrive!');
+                return [];
+            }
+
+            const folderName = assetsFolder.name;
+            const subItems = await client.api(`/me/drive/root:/${folderName}:/children`).get();
+
+            for (const item of subItems.value) {
                 if (item.folder && item.name !== 'GRAFICHE') {
                     const components = {};
                     const compItems = await client.api(`/me/drive/root:/APP_MOCKUP_ASSETS/${item.name}:/children`).get();
