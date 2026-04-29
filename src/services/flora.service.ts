@@ -24,8 +24,9 @@ export const floraService = {
   async startGeneration(mockupParams: MockupParams): Promise<string> {
     try {
       const publicUrl = mockupParams.image; 
+      const pass = localStorage.getItem('pretty_auth') || '';
 
-      const response = await axios.post(`${BASE_URL}/techniques/${mockupParams.technique}/runs`, {
+      const response = await axios.post(`${BASE_URL}/generate`, {
         inputs: [
           {
             id: 'colorful-diffuser-design',
@@ -36,7 +37,8 @@ export const floraService = {
         mode: 'async'
       }, {
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'x-api-key': pass
         }
       });
       
@@ -52,7 +54,10 @@ export const floraService = {
    */
   async pollStatus(runId: string, technique: string): Promise<FloraResponse> {
     try {
-      const response = await axios.get(`${BASE_URL}/techniques/${technique}/runs/${runId}`);
+      const pass = localStorage.getItem('pretty_auth') || '';
+      const response = await axios.get(`${BASE_URL}/status/${runId}`, {
+        headers: { 'x-api-key': pass }
+      });
       return response.data;
     } catch (error: any) {
       console.error('Flora AI Polling Error:', error);

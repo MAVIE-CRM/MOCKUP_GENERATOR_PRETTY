@@ -17,10 +17,28 @@ async function startServer() {
         app.use(cors());
         app.use(express.json({ limit: '50mb' }));
 
+        // Middleware di Autenticazione
+        const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'pretty2024';
+        
+        const authMiddleware = (req, res, next) => {
+            // Saltiamo il controllo per la root e le rotte pubbliche se necessario
+            if (req.path === '/' || req.path === '/api/health') return next();
+            
+            const clientPass = req.headers['x-api-key'];
+            if (clientPass === AUTH_PASSWORD) {
+                next();
+            } else {
+                res.status(401).json({ error: 'Accesso non autorizzato. Password errata o mancante.' });
+            }
+        };
+
         app.use((req, res, next) => {
             res.setHeader('ngrok-skip-browser-warning', 'true');
             next();
         });
+
+        // Applichiamo il middleware a tutte le rotte /api
+        app.use('/api', authMiddleware);
 
         const onedrive = require('./onedrive.cjs');
 

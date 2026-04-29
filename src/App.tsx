@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown } from 'lucide-react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, ShieldCheck, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -38,6 +38,10 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [loginError, setLoginError] = useState(false);
+
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [selections, setSelections] = useState<Record<string, Record<string, ComponentAsset>>>({});
@@ -62,47 +66,70 @@ function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        setConnectionError(null);
-        // Fetch Prodotti
-        const pRes = await fetch(config.endpoints.products, {
-          headers: { 'ngrok-skip-browser-warning': 'true' }
-        });
-        if (!pRes.ok) throw new Error(`Errore Server Prodotti: ${pRes.status}`);
-        const pData: Product[] = await pRes.json();
-        setProducts(pData);
-        if (pData.length > 0) {
-          setSelectedProductId(pData[0].id);
-          // Initial selections
-          const initialSelections: Record<string, Record<string, ComponentAsset>> = {};
-          pData.forEach(p => {
-            initialSelections[p.id] = {};
-            Object.entries(p.components).forEach(([cName, assets]) => {
-              if (assets.length > 0) initialSelections[p.id][cName] = assets[0];
-            });
-          });
-          setSelections(initialSelections);
-        }
-
-        // Fetch Grafiche
-        const gRes = await fetch(config.endpoints.grafiche, {
-          headers: { 'ngrok-skip-browser-warning': 'true' }
-        });
-        if (!gRes.ok) throw new Error(`Errore Server Grafiche: ${gRes.status}`);
-        const gData: GraphicAsset[] = await gRes.json();
-        setGraficheList(gData);
-        if (gData.length > 0) {
-          setSelectedGraphic(gData[0]);
-          setExpandedFolders({ [gData[0].folder]: true });
-        }
-      } catch (err: any) {
-        console.error("Errore nel caricamento dati", err);
-        setConnectionError(`Errore di connessione a ${config.apiUrl}. Verifica che il server Railway sia attivo. Dettaglio: ${err.message}`);
-      }
-    };
-    init();
+    const savedPass = localStorage.getItem('pretty_auth');
+    if (savedPass) {
+      setIsAuthenticated(true);
+      fetchData(savedPass);
+    }
   }, []);
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchData(password);
+  };
+
+  const fetchData = async (pass: string) => {
+    try {
+      setConnectionError(null);
+      const authHeaders = { 
+        'ngrok-skip-browser-warning': 'true',
+        'x-api-key': pass 
+      };
+
+      // Fetch Prodotti
+      const pRes = await fetch(config.endpoints.products, { headers: authHeaders });
+      if (pRes.status === 401) {
+        setLoginError(true);
+        setIsAuthenticated(false);
+        localStorage.removeItem('pretty_auth');
+        return;
+      }
+      if (!pRes.ok) throw new Error(`Errore Server Prodotti: ${pRes.status}`);
+      
+      const pData: Product[] = await pRes.json();
+      
+      // Se arriviamo qui, la password è corretta
+      setIsAuthenticated(true);
+      localStorage.setItem('pretty_auth', pass);
+      setLoginError(false);
+
+      setProducts(pData);
+      if (pData.length > 0) {
+        setSelectedProductId(pData[0].id);
+        const initialSelections: Record<string, Record<string, ComponentAsset>> = {};
+        pData.forEach(p => {
+          initialSelections[p.id] = {};
+          Object.entries(p.components).forEach(([cName, assets]) => {
+            if (assets.length > 0) initialSelections[p.id][cName] = assets[0];
+          });
+        });
+        setSelections(initialSelections);
+      }
+
+      // Fetch Grafiche
+      const gRes = await fetch(config.endpoints.grafiche, { headers: authHeaders });
+      if (!gRes.ok) throw new Error(`Errore Server Grafiche: ${gRes.status}`);
+      const gData: GraphicAsset[] = await gRes.json();
+      setGraficheList(gData);
+      if (gData.length > 0) {
+        setSelectedGraphic(gData[0]);
+        setExpandedFolders({ [gData[0].folder]: true });
+      }
+    } catch (err: any) {
+      console.error("Errore nel caricamento dati", err);
+      setConnectionError(err.message);
+    }
+  };
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
@@ -469,6 +496,68 @@ function App() {
     setTimeout(() => setIsExporting(false), 1000);
   };
 
+  if (!isAuthenticated) {
+    return (
+      <div className="h-screen w-full bg-slate-950 flex items-center justify-center p-6 md:p-10 font-sans relative overflow-hidden">
+        {/* Animated Background Elements */}
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[120px] rounded-full animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 blur-[120px] rounded-full animate-pulse" />
+        
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full relative z-10"
+        >
+          <div className="bg-slate-900/80 backdrop-blur-3xl border border-white/10 p-8 md:p-12 rounded-[2.5rem] shadow-[0_50px_100px_rgba(0,0,0,0.5)] text-center">
+            <div className="w-20 h-20 bg-indigo-600 rounded-[2rem] flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-indigo-600/20">
+              <Lock className="text-white" size={32} />
+            </div>
+            
+            <h1 className="text-3xl font-black text-white mb-2 uppercase tracking-tighter">Pretty Studio</h1>
+            <p className="text-white/40 text-xs font-bold uppercase tracking-[0.2em] mb-10">Accesso Riservato</p>
+            
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div className="relative group">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setLoginError(false);
+                  }}
+                  placeholder="Inserisci Password..."
+                  className={`w-full py-4 px-6 bg-white/5 border ${loginError ? 'border-red-500/50 text-red-200' : 'border-white/10 text-white'} rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-600/50 focus:border-indigo-600 transition-all text-center font-bold tracking-widest placeholder:text-white/10`}
+                  autoFocus
+                />
+                {loginError && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-red-500 text-[10px] font-black uppercase mt-2 tracking-widest"
+                  >
+                    Password Errata
+                  </motion.p>
+                )}
+              </div>
+              
+              <button
+                type="submit"
+                className="w-full py-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 group"
+              >
+                Entra nello Studio <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              </button>
+            </form>
+            
+            <div className="mt-10 flex items-center justify-center gap-2 text-white/20">
+              <ShieldCheck size={14} />
+              <span className="text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted Session</span>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   if (connectionError) {
     return (
       <div className="h-screen w-full bg-slate-950 flex items-center justify-center p-10 font-sans">
@@ -477,12 +566,18 @@ function App() {
             <AlertCircle size={32} />
           </div>
           <h2 className="text-xl font-black text-white mb-4 uppercase tracking-tighter">Errore di Connessione</h2>
-          <p className="text-white/40 text-xs leading-relaxed mb-8">{connectionError}</p>
+          <p className="text-white/40 text-xs leading-relaxed mb-8">
+            Impossibile connettersi al server. Verifica che la password sia corretta e che il server Railway sia attivo.<br/>
+            <span className="opacity-50 mt-2 block">{connectionError}</span>
+          </p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              localStorage.removeItem('pretty_auth');
+              window.location.reload();
+            }}
             className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl"
           >
-            <RefreshCcw size={18} /> Riprova Connessione
+            <RefreshCcw size={18} /> Riprova Login
           </button>
         </div>
       </div>
