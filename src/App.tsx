@@ -491,14 +491,25 @@ function App() {
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               const categories = Array.from(new Set(assets.map(a => {
+                const f = a.folder.toUpperCase();
+                if (f.includes('AMM')) return 'AMMATCATO';
+                if (f.includes('LISCIO')) return 'LISCIO';
                 const parts = a.folder.split(/[/\\]/);
-                const last = parts[parts.length - 1].toUpperCase();
-                return last === 'METAL' ? (parts[parts.length - 2]?.toUpperCase() || 'STANDARD') : last;
+                return parts[parts.length - 1].toUpperCase();
               }))).filter(c => c && c !== 'METAL').sort();
 
-              const currentCategory = selections[selectedProductId]?.[cName]?.folder.split(/[/\\]/).shift()?.toUpperCase() || categories[0];
+              const selectedAsset = selections[selectedProductId]?.[cName];
+              const folderUpper = selectedAsset?.folder.toUpperCase() || '';
+              const currentCategory = folderUpper.includes('AMM') ? 'AMMATCATO' : 
+                                     folderUpper.includes('LISCIO') ? 'LISCIO' : 
+                                     categories[0];
               
-              const categoryAssets = assets.filter(a => a.folder.toUpperCase().includes(currentCategory));
+              const categoryAssets = assets.filter(a => {
+                const f = a.folder.toUpperCase();
+                if (currentCategory === 'AMMATCATO') return f.includes('AMM');
+                if (currentCategory === 'LISCIO') return f.includes('LISCIO');
+                return f.includes(currentCategory);
+              });
               
               const uniqueStandard = getUniqueAssets(categoryAssets.filter(a => !a.folder.toUpperCase().includes('METAL')));
               const uniqueMetal = getUniqueAssets(categoryAssets.filter(a => a.folder.toUpperCase().includes('METAL')));
