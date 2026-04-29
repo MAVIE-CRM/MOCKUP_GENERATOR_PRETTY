@@ -49,31 +49,36 @@ async function startServer() {
         app.get('/api/onedrive/file/:id', async (req, res) => {
             const fileId = req.params.id;
             
-            // Verifica se abbiamo un URL fresco in cache
-            const cached = urlCache.get(fileId);
-            if (cached && (Date.now() - cached.timestamp < URL_TTL)) {
-                return res.redirect(cached.url);
-            }
-
             try {
-                const client = await onedrive.getClient();
-                // Recuperiamo solo i metadati, incluso il downloadUrl
-                const fileMetadata = await client.api(`/me/drive/items/${fileId}`).get();
-                const downloadUrl = fileMetadata['@microsoft.graph.downloadUrl'];
+                // Recuperiamo il downloadUrl (usando la cache se disponibile)
+                let downloadUrl;
+                const cached = urlCache.get(fileId);
+                if (cached && (Date.now() - cached.timestamp < URL_TTL)) {
+                    downloadUrl = cached.url;
+                } else {
+                    const client = await onedrive.getClient();
+                    const fileMetadata = await client.api(`/me/drive/items/${fileId}`).get();
+                    downloadUrl = fileMetadata['@microsoft.graph.downloadUrl'];
+                    if (!downloadUrl) throw new Error('Download URL non trovato');
+                    urlCache.set(fileId, { url: downloadUrl, timestamp: Date.now() });
+                }
 
-                if (!downloadUrl) throw new Error('Download URL non trovato');
-
-                // Salviamo in cache
-                urlCache.set(fileId, {
+                // Invece di redirect, facciamo un proxy dell'immagine per gestire CORS correttamente
+                const response = await axios({
+                    method: 'get',
                     url: downloadUrl,
-                    timestamp: Date.now()
+                    responseType: 'stream'
                 });
 
-                // Reindirizziamo il browser direttamente alla sorgente Microsoft
-                res.redirect(downloadUrl);
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.setHeader('Access-Control-Allow-Methods', 'GET');
+                res.setHeader('Cache-Control', 'public, max-age=3600');
+                res.setHeader('Content-Type', response.headers['content-type'] || 'image/png');
+                
+                response.data.pipe(res);
             } catch (error) {
-                console.error(`Errore redirect file ${fileId}:`, error.message);
-                res.status(500).send('Errore nel recupero del file');
+                console.error(`Errore proxy file ${fileId}:`, error.message);
+                res.status(500).send('Errore nel recupero del file via proxy');
             }
         });
 

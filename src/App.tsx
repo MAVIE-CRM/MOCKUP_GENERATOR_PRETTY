@@ -302,53 +302,69 @@ function App() {
     if (!selectedProduct || !selectedGraphic) return;
     
     setFloraStatus('Analisi Smart Fit...');
-    const containerComp = Object.keys(selectedProduct.components).find(c => {
-      const name = c.toUpperCase();
-      return name.includes('CONTENITORE') || name.includes('FLACONE') || 
-             name.includes('JAR') || name.includes('BARATTOLO') || 
-             name.includes('BOTTIGLIA') || name.includes('VASO') ||
-             name.includes('LAMPADA') || name.includes('STRUTTURA');
-    });
-    
-    if (!containerComp) return;
-    
-    const asset = selections[selectedProductId]?.[containerComp];
-    if (!asset) return;
-
     try {
+      const mainCompName = Object.keys(selectedProduct.components).find(c => {
+        const n = c.toUpperCase();
+        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
+               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
+               n.includes('LAMPADA') || n.includes('STRUTTURA');
+      }) || Object.keys(selectedProduct.components)[0];
+
+      const asset = selections[selectedProductId]?.[mainCompName];
+      if (!asset) {
+        setFloraStatus('Seleziona un prodotto');
+        return;
+      }
+
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.src = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-      await new Promise((resolve) => { img.onload = resolve; });
+      // Aggiungiamo un timestamp per evitare cache browser che blocca CORS
+      const bust = Date.now();
+      const baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+      img.src = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${bust}`;
+      
+      await new Promise((resolve, reject) => { 
+        img.onload = resolve; 
+        img.onerror = () => reject(new Error("Errore caricamento immagine per analisi"));
+      });
 
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
       canvas.height = 1250;
       const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      if (!ctx) throw new Error("Canvas context non disponibile");
 
       ctx.drawImage(img, 0, 0, 1000, 1250);
-      const data = ctx.getImageData(0, 0, 1000, 1250).data;
+      const imageData = ctx.getImageData(0, 0, 1000, 1250);
+      const data = imageData.data;
 
+      // Trova i confini del componente (non trasparente)
       let minX = 1000, maxX = 0, minY = 1250, maxY = 0;
+      let pixelsFound = 0;
+
       for (let y = 0; y < 1250; y += 2) {
         for (let x = 0; x < 1000; x += 2) {
-          if (data[(y * 1000 + x) * 4 + 3] > 20) {
+          const idx = (y * 1000 + x) * 4;
+          if (data[idx + 3] > 30) { // Soglia alpha per ignorare ombre leggere
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
+            pixelsFound++;
           }
         }
       }
+
+      if (pixelsFound < 100) throw new Error("Prodotto non rilevato nell'immagine");
 
       const compWidth = maxX - minX;
       const compHeight = maxY - minY;
       const compCenterX = minX + (compWidth / 2);
       const compCenterY = minY + (compHeight * 0.55);
 
-      const targetGraphicWidth = compWidth * 0.70;
+      const targetGraphicWidth = compWidth * 0.72; // 72% della larghezza
       const newScale = Math.round((targetGraphicWidth / 285) * 100);
+      
       const jarCenterY = 1250 * 0.74; 
       const relativeY = Math.round(compCenterY - jarCenterY);
       const relativeX = Math.round(compCenterX - 500);
@@ -356,11 +372,20 @@ function App() {
       setGraphicScale(Math.min(250, Math.max(10, newScale)));
       setGraphicY(relativeY);
       setGraphicX(relativeX);
-      setFloraStatus('');
-      confetti({ particleCount: 60, spread: 50, origin: { y: 0.8 }, colors: ['#6366f1', '#10b981'] });
+      
+      setFloraStatus('Smart Fit Applicato! ✨');
+      setTimeout(() => setFloraStatus(''), 2000);
+      
+      confetti({ 
+        particleCount: 80, 
+        spread: 60, 
+        origin: { y: 0.8 }, 
+        colors: ['#6366f1', '#10b981', '#f59e0b'] 
+      });
     } catch (err) {
       console.error("SmartFit Error:", err);
-      setFloraStatus('Errore Smart Fit');
+      setFloraStatus(`Errore: ${err.message}`);
+      setTimeout(() => setFloraStatus(''), 4000);
     }
   };
 
