@@ -403,10 +403,11 @@ function App() {
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               const categories = Array.from(new Set(assets.map(a => {
                 const parts = a.folder.split(/[/\\]/);
-                // Se l'ultima parte è METAL, la categoria è la penultima (es. TAPPI)
-                if (parts[parts.length - 1].toUpperCase() === 'METAL') return parts[parts.length - 2]?.toUpperCase() || 'PRINCIPALE';
-                return parts[parts.length - 1].toUpperCase();
-              }))).filter(c => c && c !== 'METAL').sort();
+                const last = parts[parts.length - 1].toUpperCase();
+                // Se è METAL ma non c'è una categoria padre, usiamo METAL come categoria
+                if (last === 'METAL') return parts[parts.length - 2]?.toUpperCase() || 'METAL';
+                return last;
+              }))).filter(c => c).sort();
 
               const currentCategory = selections[selectedProductId]?.[cName]?.folder.toUpperCase().includes('AMM') ? 'NEW AMM' :
                 selections[selectedProductId]?.[cName]?.folder.toUpperCase().includes('LISCIO') ? 'NEW LISCIO' : categories[0];
@@ -517,9 +518,20 @@ function App() {
                       {(expandedFolders[folder] || searchQuery.length > 0) && (
                         <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="pl-4 space-y-1 border-l border-white/5 ml-2">
                           {assets.map(asset => (
-                            <button key={asset.path} onClick={() => setSelectedGraphic(asset)} className={`w-full px-3 py-2 rounded-lg text-[10px] font-medium text-left truncate transition-all ${selectedGraphic?.path === asset.path ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-500/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}>
-                              {formatLabel(asset.name)}
-                            </button>
+                            <div key={asset.path} className="flex items-center gap-1 group/item">
+                              <button onClick={() => setSelectedGraphic(asset)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-medium text-left truncate transition-all ${selectedGraphic?.path === asset.path ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-500/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}>
+                                {formatLabel(asset.name)}
+                              </button>
+                              <a 
+                                href={asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="p-2 text-white/20 hover:text-indigo-400 opacity-0 group-hover/item:opacity-100 transition-all"
+                                title="Anteprima originale"
+                              >
+                                <Search size={14} />
+                              </a>
+                            </div>
                           ))}
                         </motion.div>
                       )}
