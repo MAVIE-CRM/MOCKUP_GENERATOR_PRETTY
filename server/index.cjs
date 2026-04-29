@@ -13,6 +13,16 @@ app.use(express.json({ limit: '50mb' }));
 
 const onedrive = require('./onedrive.cjs');
 
+// Health Check per Railway
+app.get('/', (req, res) => {
+    res.send('Pretty Studio Backend is running! 🚀');
+});
+
+// Gestione errori globale per evitare crash improvvisi
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 // Funzione ricorsiva per leggere tutti i file nelle sottocartelle
 function walkSync(dir, filelist = [], baseDir = dir) {
     if (!fs.existsSync(dir)) return filelist;
@@ -167,5 +177,11 @@ if (fs.existsSync(PRODOTTI_DIR)) {
 }
 
 app.listen(port, '0.0.0.0', () => {
+  console.log('-----------------------------------------');
+  console.log(`PRETTY STUDIO SERVER STARTING...`);
+  console.log(`Port: ${port}`);
+  console.log(`Node Version: ${process.version}`);
+  console.log(`OneDrive Token: ${process.env.ONEDRIVE_REFRESH_TOKEN ? 'Present' : 'MISSING'}`);
   console.log(`Server listening at 0.0.0.0:${port}`);
+  console.log('-----------------------------------------');
 });
