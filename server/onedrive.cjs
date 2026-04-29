@@ -1,12 +1,12 @@
 const { Client } = require('@microsoft/microsoft-graph-client');
 const axios = require('axios');
-// Nota: In Node 18+ fetch è globale, non serve isomorphic-fetch
 
 class OneDriveService {
     constructor() {
         this.client = null;
         this.accessToken = null;
         this.tokenExpiry = null;
+        this.rootId = null;
     }
 
     async getAccessToken() {
@@ -19,7 +19,7 @@ class OneDriveService {
         const refresh_token = process.env.ONEDRIVE_REFRESH_TOKEN;
 
         if (!client_id || !client_secret || !refresh_token) {
-            throw new Error('Credenziali OneDrive mancanti nel file .env');
+            throw new Error('Credenziali OneDrive mancanti');
         }
 
         const tenant_id = 'common';
@@ -40,8 +40,8 @@ class OneDriveService {
             this.tokenExpiry = Date.now() + (response.data.expires_in * 1000) - 60000;
             return this.accessToken;
         } catch (error) {
-            console.error('Errore durante il rinnovo del token OneDrive:', error.response?.data || error.message);
-            throw new Error('Impossibile ottenere l\'access token di OneDrive');
+            console.error('Errore rinnovo token:', error.response?.data || error.message);
+            throw new Error('Impossibile ottenere l\'access token');
         }
     }
 
@@ -52,10 +52,30 @@ class OneDriveService {
         });
     }
 
+    async findRootId() {
+        if (this.rootId) return this.rootId;
+        
+        const client = await this.getClient();
+        console.log('Ricerca globale della cartella MOCKUP...');
+        
+        const searchResult = await client.api('/me/drive/root/search(q=\'MOCKUP\')').get();
+        const folder = searchResult.value.find(item => item.folder);
+
+        if (!folder) {
+            console.error('ERRORE: Nessuna cartella MOCKUP trovata!');
+            throw new Error('Cartella principale non trovata');
+        }
+
+        this.rootId = folder.id;
+        console.log(`Cartella identificata: ${folder.name} (ID: ${folder.id})`);
+        return this.rootId;
+    }
+
     async walkFolder(folderPath) {
         const client = await this.getClient();
+        const rootId = await this.findRootId();
         try {
-            const items = await client.api(`/me/drive/root:/APP_MOCKUP_ASSETS/${folderPath}:/children`).get();
+            const items = await client.api(`/me/drive/items/${rootId}:/${folderPath}:/children`).get();
             const results = [];
             for (const item of items.value) {
                 if (item.folder) {
@@ -77,34 +97,21 @@ class OneDriveService {
             return results;
         } catch (error) {
             console.error(`ERROR walkFolder ${folderPath}:`, error.message);
-            throw error;
+            return [];
         }
     }
 
     async getProducts() {
         const client = await this.getClient();
+        const rootId = await this.findRootId();
         try {
-            const items = await client.api('/me/drive/root/children').get();
-            console.log('--- ONEDRIVE ROOT FOLDERS ---');
-            items.value.forEach(item => console.log(`- ${item.name} (${item.folder ? 'Folder' : 'File'})`));
-            console.log('------------------------------');
-
             const products = [];
-            // Cerchiamo la cartella corretta ignorando maiuscole/minuscole
-            const assetsFolder = items.value.find(item => item.name.toUpperCase() === 'APP_MOCKUP_ASSETS' || item.name.toUpperCase() === 'APP_MOCKUP');
-            
-            if (!assetsFolder) {
-                console.error('ERRORE: Cartella APP_MOCKUP_ASSETS non trovata su OneDrive!');
-                return [];
-            }
-
-            const folderName = assetsFolder.name;
-            const subItems = await client.api(`/me/drive/root:/${folderName}:/children`).get();
+            const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
-                if (item.folder && item.name !== 'GRAFICHE') {
+                if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
                     const components = {};
-                    const compItems = await client.api(`/me/drive/root:/APP_MOCKUP_ASSETS/${item.name}:/children`).get();
+                    const compItems = await client.api(`/me/drive/items/${rootId}:/${item.name}:/children`).get();
                     for (const cDir of compItems.value) {
                         if (cDir.folder) {
                             const assets = await this.walkFolder(`${item.name}/${cDir.name}`);
