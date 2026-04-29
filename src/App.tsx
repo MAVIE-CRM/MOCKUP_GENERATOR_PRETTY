@@ -255,54 +255,63 @@ function App() {
   };
 
   const handleSmartSwitch = () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || !selections[selectedProductId]) {
+      console.warn("SmartSwitch: Prodotto non selezionato o asset mancanti.");
+      return;
+    }
     
+    console.log("SmartSwitch: Avvio procedura...");
     const newSelections = { ...selections[selectedProductId] };
-    let switched = false;
+    let switchedCount = 0;
 
     Object.keys(newSelections).forEach(cName => {
       const asset = newSelections[cName];
       const currentName = asset.name.toUpperCase();
       const currentFolder = asset.folder.toUpperCase();
       
-      // Determiniamo in che stato siamo ora (Liscio o Amm)
       const isL = currentFolder.includes('LISCIO') || currentName.includes('_L');
       const isA = currentFolder.includes('AMM') || currentName.includes('_A');
 
       if (isL || isA) {
-        // Se siamo in Liscio, andiamo verso Amm. Se siamo in Amm, andiamo verso Liscio.
-        // Diamo la priorità allo stato attuale basandoci sulla cartella se possibile
         const movingToAmm = currentFolder.includes('LISCIO') || (isL && !currentFolder.includes('AMM'));
-        
         const fromSuffix = movingToAmm ? '_L' : '_A';
         const toSuffix = movingToAmm ? '_A' : '_L';
         const targetFolderPart = movingToAmm ? 'AMM' : 'LISCIO';
         
+        console.log(`SmartSwitch: [${cName}] ${movingToAmm ? 'L -> A' : 'A -> L'}`);
+
         const expectedName = currentName.replace(fromSuffix, toSuffix);
         const possibleAssets = selectedProduct.components[cName];
         
-        const target = possibleAssets.find(a => {
+        // 1. Match Preciso
+        let target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
           const aFolder = a.folder.toUpperCase();
           return aName === expectedName && aFolder.includes(targetFolderPart);
-        }) || possibleAssets.find(a => {
-          // Fallback: stesso nome senza estensione nella cartella target
-          const aName = a.name.toUpperCase().split('.')[0];
-          const currBase = currentName.split('.')[0].replace('_L', '').replace('_A', '');
-          const targetBase = aName.replace('_L', '').replace('_A', '');
-          return targetBase === currBase && a.folder.toUpperCase().includes(targetFolderPart);
         });
+
+        // 2. Fallback: Match Base (stesso colore)
+        if (!target) {
+          const currBase = currentName.split('.')[0].replace('_L', '').replace('_A', '').trim();
+          target = possibleAssets.find(a => {
+            const aName = a.name.toUpperCase().split('.')[0].replace('_L', '').replace('_A', '').trim();
+            const aFolder = a.folder.toUpperCase();
+            return aName === currBase && aFolder.includes(targetFolderPart);
+          });
+        }
 
         if (target) {
           newSelections[cName] = target;
-          switched = true;
+          switchedCount++;
         }
       }
     });
 
-    if (switched) {
+    if (switchedCount > 0) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
+    } else {
+      console.warn("SmartSwitch: Nessuna controparte trovata per i componenti selezionati.");
     }
   };
 
