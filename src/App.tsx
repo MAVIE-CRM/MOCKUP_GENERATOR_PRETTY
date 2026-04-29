@@ -235,23 +235,26 @@ function App() {
 
     Object.keys(newSelections).forEach(cName => {
       const asset = newSelections[cName];
-      const name = asset.name.toUpperCase();
-      const folder = asset.folder.toUpperCase();
+      const currentName = asset.name.toUpperCase();
+      const currentFolder = asset.folder.toUpperCase();
       
-      const isL = name.includes('_L') || folder.includes('LISCIO');
-      const isA = name.includes('_A') || folder.includes('AMM');
+      const isL = currentName.includes('_L') || currentFolder.includes('LISCIO');
+      const isA = currentName.includes('_A') || currentFolder.includes('AMM');
 
       if (isL || isA) {
-        const from = isL ? '_L' : '_A';
-        const to = isL ? '_A' : '_L';
-        const targetFolder = isL ? 'AMM' : 'LISCIO';
+        const fromSuffix = isL ? '_L' : '_A';
+        const toSuffix = isL ? '_A' : '_L';
+        const targetFolderPart = isL ? 'AMM' : 'LISCIO';
+        
+        // Calcoliamo il nome esatto che stiamo cercando (es. PLS_NERO_L -> PLS_NERO_A)
+        const expectedName = currentName.replace(fromSuffix, toSuffix);
         
         const possibleAssets = selectedProduct.components[cName];
         const target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
           const aFolder = a.folder.toUpperCase();
-          // Cerchiamo il nome con suffisso cambiato NELLA cartella corretta
-          return (aName.includes(to) || aName.replace(from, to) === aName) && aFolder.includes(targetFolder);
+          // Deve avere il nome esatto calcolato E trovarsi nella cartella corretta
+          return aName === expectedName && aFolder.includes(targetFolderPart);
         });
 
         if (target) {
@@ -263,7 +266,7 @@ function App() {
 
     if (switched) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 }, colors: ['#6366f1', '#a855f7'] });
     }
   };
 
