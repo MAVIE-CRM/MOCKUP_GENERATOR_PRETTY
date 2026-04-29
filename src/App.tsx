@@ -230,39 +230,43 @@ function App() {
   const handleSmartSwitch = () => {
     if (!selectedProduct) return;
     
-    // Cerchiamo il componente principale da switchare (Contenitore, Flacone, Barattolo, etc.)
-    const mainComp = Object.keys(selectedProduct.components).find(c => {
-      const name = c.toUpperCase();
-      return name.includes('CONTENITORE') || name.includes('FLACONE') || 
-             name.includes('JAR') || name.includes('BARATTOLO') || 
-             name.includes('BOTTIGLIA') || name.includes('VASO');
+    let switchedCount = 0;
+    const newSelections = { ...selections[selectedProductId] };
+
+    Object.entries(newSelections).forEach(([cName, currentAsset]) => {
+      const currentName = currentAsset.name.toUpperCase();
+      const isLiscio = currentName.includes('_L');
+      const isAmm = currentName.includes('_A');
+
+      if (!isLiscio && !isAmm) return;
+
+      const currentSuffix = isLiscio ? '_L' : '_A';
+      const targetSuffix = isLiscio ? '_A' : '_L';
+      const targetFolderPart = isLiscio ? 'AMM' : 'LISCIO';
+      
+      const assets = selectedProduct.components[cName];
+
+      // Cerchiamo l'asset che ha lo stesso nome ma col suffisso cambiato e nella cartella giusta
+      const targetAsset = assets.find(a => {
+        const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        const expectedName = currentName.replace(currentSuffix, targetSuffix);
+        
+        return aName === expectedName && aFolder.includes(targetFolderPart);
+      });
+
+      if (targetAsset) {
+        newSelections[cName] = targetAsset;
+        switchedCount++;
+      }
     });
-    
-    if (!mainComp) return;
-    
-    const currentAsset = selections[selectedProductId]?.[mainComp];
-    if (!currentAsset) return;
 
-    const currentName = currentAsset.name.toUpperCase();
-    const isLiscio = currentName.endsWith('_L.PNG') || currentName.endsWith('_L.JPG') || currentName.endsWith('_L.SVG') || currentName.includes('_L');
-    const isAmm = currentName.endsWith('_A.PNG') || currentName.endsWith('_A.JPG') || currentName.endsWith('_A.SVG') || currentName.includes('_A');
-    
-    if (!isLiscio && !isAmm) return;
-
-    const baseName = currentAsset.name.substring(0, currentAsset.name.lastIndexOf('_'));
-    const targetSuffix = isLiscio ? '_A' : '_L';
-    
-    const assets = selectedProduct.components[mainComp];
-    
-    // Cerchiamo l'asset con lo stesso prefisso ma suffisso opposto
-    const targetAsset = assets.find(a => {
-      const aName = a.name.toUpperCase();
-      return aName.startsWith(baseName.toUpperCase()) && aName.includes(targetSuffix);
-    });
-
-    if (targetAsset) {
-      handleSelection(mainComp, targetAsset);
-      confetti({ particleCount: 30, spread: 20, origin: { y: 0.8 }, colors: ['#6366f1'] });
+    if (switchedCount > 0) {
+      setSelections(prev => ({
+        ...prev,
+        [selectedProductId]: newSelections
+      }));
+      confetti({ particleCount: 40, spread: 30, origin: { y: 0.8 }, colors: ['#6366f1', '#a855f7'] });
     }
   };
 
