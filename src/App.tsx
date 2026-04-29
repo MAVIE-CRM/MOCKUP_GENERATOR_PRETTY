@@ -491,32 +491,32 @@ function App() {
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               const categories = Array.from(new Set(assets.map(a => {
-                const f = a.folder.toUpperCase();
-                if (f.includes('AMM')) return 'AMMATCATO';
-                if (f.includes('LISCIO')) return 'LISCIO';
-                return a.folder.split(/[/\\]/).pop()?.toUpperCase() || 'STANDARD';
-              }))).filter(c => c && c !== 'METAL').sort();
+                const parts = a.folder.split(/[/\\]/);
+                let cat = parts[parts.length - 1].toUpperCase();
+                // Se l'ultima cartella è METAL, prendiamo quella superiore per la categoria principale
+                if (cat === 'METAL' && parts.length > 1) {
+                  cat = parts[parts.length - 2].toUpperCase();
+                }
+                return cat;
+              }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
-              const folderUpper = selectedAsset?.folder.toUpperCase() || '';
-              const currentCategory = folderUpper.includes('AMM') ? 'AMMATCATO' : 
-                                     folderUpper.includes('LISCIO') ? 'LISCIO' : 
-                                     categories[0];
+              const sParts = selectedAsset?.folder.split(/[/\\]/) || [];
+              let currentCategory = sParts[sParts.length - 1]?.toUpperCase() || categories[0];
+              if (currentCategory === 'METAL' && sParts.length > 1) {
+                currentCategory = sParts[sParts.length - 2].toUpperCase();
+              }
               
               const categoryAssets = assets.filter(a => {
                 const f = a.folder.toUpperCase();
-                if (currentCategory === 'AMMATCATO') return f.includes('AMM');
-                if (currentCategory === 'LISCIO') return f.includes('LISCIO');
                 return f.includes(currentCategory);
               });
 
               const switchCategory = (cat: string) => {
                 const target = assets.find(a => {
                   const f = a.folder.toUpperCase();
-                  if (cat === 'AMMATCATO') return f.includes('AMM');
-                  if (cat === 'LISCIO') return f.includes('LISCIO');
-                  return f.includes(cat);
-                });
+                  return f.includes(cat) && !f.endsWith('METAL');
+                }) || assets.find(a => a.folder.toUpperCase().includes(cat));
                 if (target) handleSelection(cName, target);
               };
               
@@ -645,12 +645,12 @@ function App() {
         </div>
 
         <div className="flex-1 h-full bg-[#f8f8f8] flex flex-col overflow-hidden relative">
-          {/* Top Header */          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-10">
+          {/* Top Header */}
+          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-10">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-black text-black/20 uppercase tracking-[0.3em]">{selectedProduct?.name || 'Studio'} View</h2>
               <div className="h-1 w-1 rounded-full bg-green-500 animate-pulse" />
             </div>
-            
             <div className="flex items-center gap-4">
               <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-black/5 rounded-xl border border-black/[0.03]">
                 <div className="flex items-center gap-1.5">
@@ -771,8 +771,7 @@ function App() {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 export default App;
