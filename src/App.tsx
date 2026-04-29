@@ -484,9 +484,23 @@ function App() {
   const handleExport = () => {
     setIsExporting(true);
     const canvas = document.querySelector('canvas');
-    if (canvas) {
+    if (canvas && selectedProduct) {
+      // Troviamo il nome dell'asset principale selezionato (es. PLS_NERO_L)
+      const mainCompName = Object.keys(selectedProduct.components).find(c => {
+        const n = c.toUpperCase();
+        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
+               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
+               n.includes('LAMPADA') || n.includes('STRUTTURA');
+      }) || Object.keys(selectedProduct.components)[0];
+
+      const asset = selections[selectedProductId]?.[mainCompName];
+      const productName = asset ? asset.name.split('.')[0] : selectedProductId;
+      const graphicName = selectedGraphic ? selectedGraphic.name.split('.')[0] : 'default';
+      
+      const fileName = `${productName}_${graphicName}.jpg`;
+
       const link = document.createElement('a');
-      link.download = `mockup-${selectedProductId.toLowerCase()}.jpg`;
+      link.download = fileName;
       link.href = canvas.toDataURL('image/jpeg', 0.95);
       link.click();
 
