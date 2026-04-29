@@ -1,6 +1,6 @@
 const { Client } = require('@microsoft/microsoft-graph-client');
-require('isomorphic-fetch');
 const axios = require('axios');
+// Nota: In Node 18+ fetch è globale, non serve isomorphic-fetch
 
 class OneDriveService {
     constructor() {
