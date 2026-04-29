@@ -229,10 +229,13 @@ function App() {
   const handleSmartSwitch = () => {
     if (!selectedProduct) return;
     
-    // Cerchiamo il componente principale da switchare
-    const mainComp = Object.keys(selectedProduct.components).find(c => 
-      c.toUpperCase().includes('CONTENITORE') || c.toUpperCase().includes('FLACONE') || c.toUpperCase().includes('JAR')
-    );
+    // Cerchiamo il componente principale da switchare (Contenitore, Flacone, Barattolo, etc.)
+    const mainComp = Object.keys(selectedProduct.components).find(c => {
+      const name = c.toUpperCase();
+      return name.includes('CONTENITORE') || name.includes('FLACONE') || 
+             name.includes('JAR') || name.includes('BARATTOLO') || 
+             name.includes('BOTTIGLIA') || name.includes('VASO');
+    });
     
     if (!mainComp) return;
     
@@ -265,10 +268,13 @@ function App() {
   const handleSmartFit = async () => {
     if (!selectedProduct) return;
     
-    // Cerchiamo il componente principale (Contenitore o Flacone)
-    const containerComp = Object.keys(selectedProduct.components).find(c => 
-      c.toUpperCase().includes('CONTENITORE') || c.toUpperCase().includes('FLACONE') || c.toUpperCase().includes('JAR')
-    );
+    // Cerchiamo il componente principale (Contenitore, Flacone, Barattolo, etc.)
+    const containerComp = Object.keys(selectedProduct.components).find(c => {
+      const name = c.toUpperCase();
+      return name.includes('CONTENITORE') || name.includes('FLACONE') || 
+             name.includes('JAR') || name.includes('BARATTOLO') || 
+             name.includes('BOTTIGLIA') || name.includes('VASO');
+    });
     
     if (!containerComp) return;
     
@@ -485,30 +491,15 @@ function App() {
               const categories = Array.from(new Set(assets.map(a => {
                 const parts = a.folder.split(/[/\\]/);
                 const last = parts[parts.length - 1].toUpperCase();
-                // Se è METAL ma non c'è una categoria padre, usiamo METAL come categoria
-                if (last === 'METAL') return parts[parts.length - 2]?.toUpperCase() || 'METAL';
-                return last;
-              }))).filter(c => c).sort();
+                return last === 'METAL' ? (parts[parts.length - 2]?.toUpperCase() || 'STANDARD') : last;
+              }))).filter(c => c && c !== 'METAL').sort();
 
-              const currentCategory = selections[selectedProductId]?.[cName]?.folder.toUpperCase().includes('AMM') ? 'NEW AMM' :
-                selections[selectedProductId]?.[cName]?.folder.toUpperCase().includes('LISCIO') ? 'NEW LISCIO' : categories[0];
-
-              const categoryAssets = assets.filter(a => {
-                const folder = a.folder.toUpperCase();
-                return folder.includes(currentCategory) && !folder.endsWith('METAL');
-              });
-
-              const metalAssets = assets.filter(a => {
-                const folder = a.folder.toUpperCase();
-                // Nei profumatori il metal è sottocategoria di Amm o Liscio
-                if (selectedProductId.toUpperCase().includes('PROFUMATORE')) {
-                    return folder.includes(currentCategory) && folder.includes('METAL');
-                }
-                return folder.includes(currentCategory) && folder.includes('METAL');
-              });
-
-              const uniqueStandard = getUniqueAssets(categoryAssets);
-              const uniqueMetal = getUniqueAssets(metalAssets);
+              const currentCategory = selections[selectedProductId]?.[cName]?.folder.split(/[/\\]/).shift()?.toUpperCase() || categories[0];
+              
+              const categoryAssets = assets.filter(a => a.folder.toUpperCase().includes(currentCategory));
+              
+              const uniqueStandard = getUniqueAssets(categoryAssets.filter(a => !a.folder.toUpperCase().includes('METAL')));
+              const uniqueMetal = getUniqueAssets(categoryAssets.filter(a => a.folder.toUpperCase().includes('METAL')));
 
               return (
                 <section key={cName} className="space-y-4">
