@@ -642,7 +642,6 @@ function App() {
                   <RefreshCcw size={14} />
                 </button>
               </div>
-
                 <button onClick={handleSmartFit} className="p-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group" title="Adatta Automaticamente">
                   <Wand2 size={16} className="group-hover:rotate-12 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
