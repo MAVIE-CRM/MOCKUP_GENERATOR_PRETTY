@@ -75,34 +75,50 @@ class OneDriveService {
         const client = await this.getClient();
         const rootId = await this.findRootId();
         try {
-            const items = await client.api(`/me/drive/items/${rootId}:/${folderPath}:/children`).get();
-            const results = [];
+            // Proviamo a cercare la cartella in modo case-insensitive
+            const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
+            const targetFolder = parentItems.value.find(item => 
+                item.folder && item.name.toUpperCase() === folderPath.toUpperCase()
+            );
+
+            if (!targetFolder) {
+                console.warn(`Cartella ${folderPath} non trovata in questo percorso.`);
+                return [];
+            }
+
+            return await this._recursiveWalk(targetFolder.id, '');
+        } catch (error) {
+            console.error(`ERROR walkFolder ${folderPath}:`, error.message);
+            return [];
+        }
+    }
+
+    async _recursiveWalk(itemId, currentPath) {
+        const client = await this.getClient();
+        const results = [];
+        try {
+            const items = await client.api(`/me/drive/items/${itemId}/children`).get();
             for (const item of items.value) {
                 if (item.folder) {
-                    const subResults = await this.walkFolder(`${folderPath}/${item.name}`);
+                    const subResults = await this._recursiveWalk(item.id, currentPath ? `${currentPath}/${item.name}` : item.name);
                     results.push(...subResults);
                 } else if (item.file) {
                     const name = item.name.toLowerCase();
-                    // Filtriamo file "principale" o nomi simili che non servono come asset
                     if (name.includes('principale')) continue;
                     
                     if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.svg')) {
-                        // Se il percorso contiene METAL, lo marchiamo nel nome della cartella
-                        const folderName = folderPath.toUpperCase().includes('METAL') ? 'METAL' : (folderPath.split('/').pop() || 'Principale');
-                        
                         results.push({
                             id: item.id,
                             name: item.name,
-                            path: item.id,
-                            folder: folderName,
-                            downloadUrl: item['@microsoft.graph.downloadUrl']
+                            path: item.id, // Usiamo l'ID per il fetch
+                            fullPath: `/api/onedrive/file/${item.id}`,
+                            folder: currentPath.split('/').pop() || 'Principale'
                         });
                     }
                 }
             }
             return results;
-        } catch (error) {
-            console.error(`ERROR walkFolder ${folderPath}:`, error.message);
+        } catch (e) {
             return [];
         }
     }
@@ -115,18 +131,14 @@ class OneDriveService {
             const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
-                // Escludiamo GRAFICHE e file sciolti (come PRINCIPALE.png) nella radice dei prodotti
                 if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
                     const components = {};
-                    const compItems = await client.api(`/me/drive/items/${rootId}:/${item.name}:/children`).get();
+                    const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
                     for (const cDir of compItems.value) {
                         if (cDir.folder) {
-                            const assets = await this.walkFolder(`${item.name}/${cDir.name}`);
+                            const assets = await this._recursiveWalk(cDir.id, cDir.name);
                             if (assets.length > 0) {
-                                components[cDir.name] = assets.map(asset => ({
-                                    ...asset,
-                                    fullPath: `/api/onedrive/file/${asset.id}`
-                                }));
+                                components[cDir.name] = assets;
                             }
                         }
                     }
