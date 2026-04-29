@@ -226,27 +226,39 @@ function App() {
     }));
   };
 
-  const handleSmartSwitch = (componentName: string) => {
-    const currentAsset = selections[selectedProductId]?.[componentName];
-    if (!currentAsset || !selectedProduct) return;
+  const handleSmartSwitch = () => {
+    if (!selectedProduct) return;
+    
+    // Cerchiamo il componente principale da switchare
+    const mainComp = Object.keys(selectedProduct.components).find(c => 
+      c.toUpperCase().includes('CONTENITORE') || c.toUpperCase().includes('FLACONE') || c.toUpperCase().includes('JAR')
+    );
+    
+    if (!mainComp) return;
+    
+    const currentAsset = selections[selectedProductId]?.[mainComp];
+    if (!currentAsset) return;
 
-    const currentFolder = currentAsset.folder.toUpperCase();
-    const isLiscio = currentFolder.includes('LISCIO');
-    const isAmm = currentFolder.includes('AMM');
+    const currentName = currentAsset.name.toUpperCase();
+    const isLiscio = currentName.endsWith('_L.PNG') || currentName.endsWith('_L.JPG') || currentName.endsWith('_L.SVG') || currentName.includes('_L');
+    const isAmm = currentName.endsWith('_A.PNG') || currentName.endsWith('_A.JPG') || currentName.endsWith('_A.SVG') || currentName.includes('_A');
     
     if (!isLiscio && !isAmm) return;
 
-    const targetFolderPart = isLiscio ? 'AMM' : 'LISCIO';
-    const assets = selectedProduct.components[componentName];
+    const baseName = currentAsset.name.substring(0, currentAsset.name.lastIndexOf('_'));
+    const targetSuffix = isLiscio ? '_A' : '_L';
     
-    // Cerchiamo l'asset con lo stesso nome (colore) nella categoria opposta
-    const targetAsset = assets.find(a => 
-      a.folder.toUpperCase().includes(targetFolderPart) && 
-      a.name === currentAsset.name
-    );
+    const assets = selectedProduct.components[mainComp];
+    
+    // Cerchiamo l'asset con lo stesso prefisso ma suffisso opposto
+    const targetAsset = assets.find(a => {
+      const aName = a.name.toUpperCase();
+      return aName.startsWith(baseName.toUpperCase()) && aName.includes(targetSuffix);
+    });
 
     if (targetAsset) {
-      handleSelection(componentName, targetAsset);
+      handleSelection(mainComp, targetAsset);
+      confetti({ particleCount: 30, spread: 20, origin: { y: 0.8 }, colors: ['#6366f1'] });
     }
   };
 
@@ -488,6 +500,10 @@ function App() {
 
               const metalAssets = assets.filter(a => {
                 const folder = a.folder.toUpperCase();
+                // Nei profumatori il metal è sottocategoria di Amm o Liscio
+                if (selectedProductId.toUpperCase().includes('PROFUMATORE')) {
+                    return folder.includes(currentCategory) && folder.includes('METAL');
+                }
                 return folder.includes(currentCategory) && folder.includes('METAL');
               });
 
@@ -642,6 +658,16 @@ function App() {
                   <RefreshCcw size={14} />
                 </button>
               </div>
+
+                <button 
+                  onClick={handleSmartSwitch} 
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20" 
+                  title="Switch Liscio/Ammatcato"
+                >
+                  <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Switch</span>
+                </button>
+                <div className="w-[1px] h-4 bg-black/10" />
                 <button onClick={handleSmartFit} className="p-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group" title="Adatta Automaticamente">
                   <Wand2 size={16} className="group-hover:rotate-12 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
@@ -679,7 +705,6 @@ function App() {
                 </button>
               </div>
             </div>
-          </div>
 
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10">
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30 relative">

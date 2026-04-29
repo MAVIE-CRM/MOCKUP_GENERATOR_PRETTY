@@ -96,14 +96,13 @@ class OneDriveService {
                             name: item.name,
                             path: item.id,
                             fullPath: `/api/onedrive/file/${item.id}?name=${encodeURIComponent(item.name)}`,
-                            folder: currentPath.split('/').pop() || 'Principale'
+                            folder: currentPath
                         });
                     }
                 }
             }
             return results;
         } catch (e) {
-            console.error(`Error in walk for ${itemId}:`, e.message);
             return [];
         }
     }
@@ -116,15 +115,29 @@ class OneDriveService {
             const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
+                // Cerchiamo qualsiasi cartella che non sia GRAFICHE
                 if (item.folder && item.name.toUpperCase().includes('GRAFICHE') === false) {
                     const components = {};
                     try {
                         const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
                         for (const cDir of compItems.value) {
-                            if (cDir.folder) {
-                                const assets = await this._recursiveWalk(cDir.id, cDir.name);
-                                if (assets.length > 0) {
-                                    components[cDir.name] = assets;
+                            if (cDir.folder || cDir.file) { // Alcuni componenti potrebbero essere singoli file
+                                if (cDir.folder) {
+                                    const assets = await this._recursiveWalk(cDir.id, cDir.name);
+                                    if (assets.length > 0) components[cDir.name] = assets;
+                                } else if (cDir.file) {
+                                    // Se è un file sciolto nel prodotto, lo mettiamo in una categoria "Generale"
+                                    const name = cDir.name.toLowerCase();
+                                    if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.svg')) {
+                                        if (!components['GENERALE']) components['GENERALE'] = [];
+                                        components['GENERALE'].push({
+                                            id: cDir.id,
+                                            name: cDir.name,
+                                            path: cDir.id,
+                                            fullPath: `/api/onedrive/file/${cDir.id}?name=${encodeURIComponent(cDir.name)}`,
+                                            folder: 'GENERALE'
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -134,7 +147,6 @@ class OneDriveService {
             }
             return products;
         } catch (error) {
-            console.error('getProducts Error:', error.message);
             throw error;
         }
     }
@@ -148,16 +160,10 @@ class OneDriveService {
                 item.folder && item.name.toUpperCase().includes('GRAFICHE')
             );
 
-            if (!targetFolder) {
-                console.warn('GRAFICHE not found in root.');
-                return [];
-            }
+            if (!targetFolder) return [];
 
-            const results = await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
-            console.log(`Grafiche trovate: ${results.length}`);
-            return results;
+            return await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
         } catch (error) {
-            console.error('getGrafiche Error:', error.message);
             return [];
         }
     }
