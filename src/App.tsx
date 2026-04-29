@@ -494,8 +494,7 @@ function App() {
                 const f = a.folder.toUpperCase();
                 if (f.includes('AMM')) return 'AMMATCATO';
                 if (f.includes('LISCIO')) return 'LISCIO';
-                const parts = a.folder.split(/[/\\]/);
-                return parts[parts.length - 1].toUpperCase();
+                return a.folder.split(/[/\\]/).pop()?.toUpperCase() || 'STANDARD';
               }))).filter(c => c && c !== 'METAL').sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
@@ -510,6 +509,16 @@ function App() {
                 if (currentCategory === 'LISCIO') return f.includes('LISCIO');
                 return f.includes(currentCategory);
               });
+
+              const switchCategory = (cat: string) => {
+                const target = assets.find(a => {
+                  const f = a.folder.toUpperCase();
+                  if (cat === 'AMMATCATO') return f.includes('AMM');
+                  if (cat === 'LISCIO') return f.includes('LISCIO');
+                  return f.includes(cat);
+                });
+                if (target) handleSelection(cName, target);
+              };
               
               const uniqueStandard = getUniqueAssets(categoryAssets.filter(a => !a.folder.toUpperCase().includes('METAL')));
               const uniqueMetal = getUniqueAssets(categoryAssets.filter(a => a.folder.toUpperCase().includes('METAL')));
@@ -532,14 +541,11 @@ function App() {
                     )}
 
                   {categories.length > 1 && (
-                    <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl">
+                    <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
                       {categories.map(cat => (
-                        <button
-                          key={cat}
-                          onClick={() => {
-                            const firstInCat = assets.find(a => a.folder.toUpperCase().includes(cat));
-                            if (firstInCat) handleSelection(cName, firstInCat);
-                          }}
+                        <button 
+                          key={cat} 
+                          onClick={() => switchCategory(cat)} 
                           className={`flex-1 py-1.5 px-2 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all ${currentCategory === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
                         >
                           {cat}
@@ -639,99 +645,70 @@ function App() {
         </div>
 
         <div className="flex-1 h-full bg-[#f8f8f8] flex flex-col overflow-hidden relative">
-          {/* Top Header */}
-          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-10">
+          {/* Top Header */          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-10">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-black text-black/20 uppercase tracking-[0.3em]">{selectedProduct?.name || 'Studio'} View</h2>
               <div className="h-1 w-1 rounded-full bg-green-500 animate-pulse" />
             </div>
-            <div className="flex items-center gap-6">
-              <div className="hidden md:flex flex-wrap items-center gap-6 px-4 py-2 bg-black/5 rounded-2xl border border-black/[0.03]">
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Scala</span>
-                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+            
+            <div className="flex items-center gap-4">
+              <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-black/5 rounded-xl border border-black/[0.03]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] font-black text-black/30 uppercase w-8">Scala</span>
+                  <div className="flex items-center bg-white/80 rounded-lg p-0.5 shadow-sm">
                     <button onClick={() => setGraphicScale(s => Math.max(10, s - 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
-                    <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-16 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-1" />
                     <button onClick={() => setGraphicScale(s => Math.min(400, s + 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
                   </div>
-                  <span className="text-[9px] font-bold text-black w-8">{graphicScale}%</span>
                 </div>
 
                 <div className="w-[1px] h-4 bg-black/10" />
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Posiz. X</span>
-                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] font-black text-black/30 uppercase w-8">Pos.X</span>
+                  <div className="flex items-center bg-white/80 rounded-lg p-0.5 shadow-sm">
                     <button onClick={() => setGraphicX(x => x - 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronRight className="rotate-180" size={12} /></button>
-                    <input type="range" min="-400" max="400" value={graphicX} onChange={(e) => setGraphicX(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <input type="range" min="-400" max="400" value={graphicX} onChange={(e) => setGraphicX(parseInt(e.target.value))} className="w-16 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-1" />
                     <button onClick={() => setGraphicX(x => x + 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronRight size={12} /></button>
                   </div>
-                  <span className="text-[9px] font-bold text-black w-8">{graphicX}px</span>
                 </div>
 
                 <div className="w-[1px] h-4 bg-black/10" />
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Posiz. Y</span>
-                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] font-black text-black/30 uppercase w-8">Pos.Y</span>
+                  <div className="flex items-center bg-white/80 rounded-lg p-0.5 shadow-sm">
                     <button onClick={() => setGraphicY(y => y + 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
-                    <input type="range" min="-400" max="400" value={graphicY} onChange={(e) => setGraphicY(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <input type="range" min="-400" max="400" value={graphicY} onChange={(e) => setGraphicY(parseInt(e.target.value))} className="w-16 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-1" />
                     <button onClick={() => setGraphicY(y => y - 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
                   </div>
-                  <span className="text-[9px] font-bold text-black w-8">{graphicY}px</span>
                 </div>
 
-                <button onClick={() => { setGraphicScale(100); setGraphicY(0); setGraphicX(0); }} className="p-1.5 rounded-lg hover:bg-black/10 text-black/40 hover:text-black transition-all" title="Reset">
+                <button onClick={() => { setGraphicScale(100); setGraphicY(0); setGraphicX(0); }} className="p-1.5 rounded-lg hover:bg-black/10 text-black/30 hover:text-black transition-all" title="Reset">
                   <RefreshCcw size={14} />
                 </button>
               </div>
 
-                <button 
-                  onClick={handleSmartSwitch} 
-                  className="px-4 py-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20" 
-                  title="Switch Liscio/Ammatcato"
-                >
-                  <RefreshCcw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Switch</span>
+              <div className="flex items-center gap-2">
+                <button onClick={handleSmartSwitch} className="px-3 py-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 border border-indigo-500/20 group">
+                  <RefreshCcw size={14} className="group-active:rotate-180 transition-transform duration-500" />
+                  <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Switch</span>
                 </button>
-                <div className="w-[1px] h-4 bg-black/10" />
-                <button onClick={handleSmartFit} className="p-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group" title="Adatta Automaticamente">
-                  <Wand2 size={16} className="group-hover:rotate-12 transition-transform" />
+                <button onClick={handleSmartFit} className="p-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20">
+                  <Wand2 size={14} className="group-hover:rotate-12 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
                 </button>
-                <div className="w-[1px] h-4 bg-black/10" />
-                <button 
-                  onClick={async () => {
-                    setFloraStatus('Aggiornamento asset...');
-                    try {
-                      const pRes = await fetch(config.endpoints.products, {
-                        headers: { 'ngrok-skip-browser-warning': 'true' }
-                      });
-                      const pData = await pRes.json();
-                      setProducts(pData);
-                      const gRes = await fetch(config.endpoints.grafiche, {
-                        headers: { 'ngrok-skip-browser-warning': 'true' }
-                      });
-                      const gData = await gRes.json();
-                      setGraficheList(gData);
-                      setFloraStatus('Asset aggiornati');
-                      setTimeout(() => setFloraStatus(''), 2000);
-                    } catch (e) {
-                      setError('Errore durante l\'aggiornamento asset');
-                    }
-                  }} 
-                  className="p-2.5 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 hover:text-black transition-all flex items-center gap-2 group" 
-                  title="Aggiorna OneDrive"
-                >
-                  <RefreshCcw size={16} className="group-active:rotate-180 transition-transform duration-500" />
-                  <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Sync OneDrive</span>
-                </button>
-                <button onClick={handleRandomize} className="p-2.5 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 transition-all" title="Randomize"><RefreshCcw size={16} /></button>
-                <button onClick={handleExport} disabled={isExporting || !selectedGraphic} className="px-6 py-2.5 text-[10px] rounded-xl bg-black text-white font-black uppercase tracking-widest flex items-center gap-3 hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-black/20">
-                  <Download size={16} /> Export HQ
+              </div>
+
+              <div className="flex items-center gap-2 border-l border-black/5 pl-4">
+                <button onClick={handleRandomize} className="p-2.5 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 transition-all"><RefreshCcw size={16} /></button>
+                <button onClick={handleExport} disabled={isExporting || !selectedGraphic} className="px-5 py-2.5 text-[9px] rounded-xl bg-black text-white font-black uppercase tracking-[0.1em] flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-xl">
+                  <Download size={16} /> Export
                 </button>
               </div>
             </div>
+          </div>
+
 
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10">
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30 relative">
