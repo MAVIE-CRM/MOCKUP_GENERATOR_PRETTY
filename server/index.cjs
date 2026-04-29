@@ -165,6 +165,6 @@ if (fs.existsSync(PRODOTTI_DIR)) {
     app.use('/product-files', express.static(PRODOTTI_DIR));
 }
 
-app.listen(port, () => {
-  console.log(`Server listening at http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server listening at 0.0.0.0:${port}`);
 });
