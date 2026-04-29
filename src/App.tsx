@@ -299,14 +299,15 @@ function App() {
   };
 
   const handleSmartFit = async () => {
-    if (!selectedProduct) return;
+    if (!selectedProduct || !selectedGraphic) return;
     
-    // Cerchiamo il componente principale (Contenitore, Flacone, Barattolo, etc.)
+    setFloraStatus('Analisi Smart Fit...');
     const containerComp = Object.keys(selectedProduct.components).find(c => {
       const name = c.toUpperCase();
       return name.includes('CONTENITORE') || name.includes('FLACONE') || 
              name.includes('JAR') || name.includes('BARATTOLO') || 
-             name.includes('BOTTIGLIA') || name.includes('VASO');
+             name.includes('BOTTIGLIA') || name.includes('VASO') ||
+             name.includes('LAMPADA') || name.includes('STRUTTURA');
     });
     
     if (!containerComp) return;
@@ -314,60 +315,53 @@ function App() {
     const asset = selections[selectedProductId]?.[containerComp];
     if (!asset) return;
 
-    const assetUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-    
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = assetUrl;
-    
-    img.onload = () => {
+    try {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.src = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+      await new Promise((resolve) => { img.onload = resolve; });
+
       const canvas = document.createElement('canvas');
+      canvas.width = 1000;
+      canvas.height = 1250;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      
-      let minX = canvas.width, maxX = 0, minY = canvas.height, maxY = 0;
-      let found = false;
 
-      // Scansioniamo i pixel per trovare l'area non trasparente
-      for (let y = 0; y < canvas.height; y += 5) {
-        for (let x = 0; x < canvas.width; x += 5) {
-          const alpha = imageData[(y * canvas.width + x) * 4 + 3];
-          if (alpha > 50) { // Pixel non trasparente
+      ctx.drawImage(img, 0, 0, 1000, 1250);
+      const data = ctx.getImageData(0, 0, 1000, 1250).data;
+
+      let minX = 1000, maxX = 0, minY = 1250, maxY = 0;
+      for (let y = 0; y < 1250; y += 2) {
+        for (let x = 0; x < 1000; x += 2) {
+          if (data[(y * 1000 + x) * 4 + 3] > 20) {
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
-            found = true;
           }
         }
       }
 
-      if (found) {
-        const jarWidth = maxX - minX;
-        const jarHeight = maxY - minY;
-        const jarCenterY = minY + (jarHeight / 2);
-        
-        // Calcoliamo la scala (usando circa l'80% della larghezza del contenitore per il padding)
-        // Supponiamo che la grafica originale sia circa 1000px di base nel canvas
-        const targetWidth = jarWidth * 0.75;
-        const newScale = Math.round((targetWidth / 500) * 100); // 500 è una base empirica per il nostro MockupCanvas
-        
-        // Calcoliamo la posizione Y relativa al centro dell'immagine (1000x1250)
-        const relativeY = Math.round((jarCenterY - 625)); // 625 è il centro verticale di 1250
-        
-        setGraphicScale(newScale);
-        setGraphicY(relativeY);
-        setGraphicX(0);
-        
-        confetti({ particleCount: 50, spread: 30, origin: { y: 0.8 }, colors: ['#a855f7'] });
-      }
-    };
+      const compWidth = maxX - minX;
+      const compHeight = maxY - minY;
+      const compCenterX = minX + (compWidth / 2);
+      const compCenterY = minY + (compHeight * 0.55);
+
+      const targetGraphicWidth = compWidth * 0.70;
+      const newScale = Math.round((targetGraphicWidth / 285) * 100);
+      const jarCenterY = 1250 * 0.74; 
+      const relativeY = Math.round(compCenterY - jarCenterY);
+      const relativeX = Math.round(compCenterX - 500);
+
+      setGraphicScale(Math.min(250, Math.max(10, newScale)));
+      setGraphicY(relativeY);
+      setGraphicX(relativeX);
+      setFloraStatus('');
+      confetti({ particleCount: 60, spread: 50, origin: { y: 0.8 }, colors: ['#6366f1', '#10b981'] });
+    } catch (err) {
+      console.error("SmartFit Error:", err);
+      setFloraStatus('Errore Smart Fit');
+    }
   };
 
   const getUniqueAssets = (assets: ComponentAsset[]) => {
