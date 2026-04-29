@@ -20,6 +20,7 @@ interface MockupCanvasProps {
   graphic: string;
   graphicScale: number;
   graphicY: number;
+  graphicX: number;
 }
 
 const PRODUCT_CALIBRATION: Record<string, { centerY: number, baseWidth: number }> = {
@@ -31,7 +32,7 @@ const PRODUCT_CALIBRATION: Record<string, { centerY: number, baseWidth: number }
   'DEFAULT': { centerY: 0.5, baseWidth: 300 }
 };
 
-const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY }: MockupCanvasProps) => {
+const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY, graphicX }: MockupCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [images, setImages] = useState<Record<string, HTMLImageElement | null>>({});
   const [loading, setLoading] = useState(true);
@@ -144,7 +145,7 @@ const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY }: 
       const aspectRatio = images.graphic.height / images.graphic.width;
       const graphicHeight = graphicWidth * aspectRatio;
 
-      const centerX = canvas.width / 2;
+      const centerX = (canvas.width / 2) + graphicX;
       const jarCenterY = canvas.height * calibration.centerY;
       const centerY = jarCenterY + graphicY - (graphicHeight / 2);
 
@@ -159,7 +160,7 @@ const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY }: 
       ctx.textAlign = 'center';
       ctx.fillText('NESSUN COMPONENTE CARICATO', canvas.width/2, canvas.height/2);
     }
-  }, [images, loading, graphicScale, graphicY, product]);
+  }, [images, loading, graphicScale, graphicY, graphicX, product]);
 
   return (
     <div className="relative w-full h-full flex items-center justify-center">

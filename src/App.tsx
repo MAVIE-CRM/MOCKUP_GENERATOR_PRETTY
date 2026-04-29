@@ -49,6 +49,7 @@ function App() {
 
   const [graphicScale, setGraphicScale] = useState(100);
   const [graphicY, setGraphicY] = useState(0);
+  const [graphicX, setGraphicX] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
 
   const [isFloraRunning, setIsFloraRunning] = useState(false);
@@ -330,6 +331,7 @@ function App() {
         
         setGraphicScale(newScale);
         setGraphicY(relativeY);
+        setGraphicX(0);
         
         confetti({ particleCount: 50, spread: 30, origin: { y: 0.8 }, colors: ['#a855f7'] });
       }
@@ -633,19 +635,42 @@ function App() {
               <div className="h-1 w-1 rounded-full bg-green-500 animate-pulse" />
             </div>
             <div className="flex items-center gap-6">
-              <div className="hidden md:flex items-center gap-6 px-4 py-1.5 bg-black/5 rounded-2xl border border-black/[0.03]">
-                <div className="flex items-center gap-3">
+              <div className="hidden md:flex flex-wrap items-center gap-6 px-4 py-2 bg-black/5 rounded-2xl border border-black/[0.03]">
+                <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Scala</span>
-                  <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-24 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black" />
+                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+                    <button onClick={() => setGraphicScale(s => Math.max(10, s - 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
+                    <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <button onClick={() => setGraphicScale(s => Math.min(400, s + 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
+                  </div>
                   <span className="text-[9px] font-bold text-black w-8">{graphicScale}%</span>
                 </div>
+
                 <div className="w-[1px] h-4 bg-black/10" />
-                <div className="flex items-center gap-3">
-                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Posizione Y</span>
-                  <input type="range" min="-300" max="400" value={graphicY} onChange={(e) => setGraphicY(parseInt(e.target.value))} className="w-24 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black" />
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Posiz. X</span>
+                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+                    <button onClick={() => setGraphicX(x => x - 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronRight className="rotate-180" size={12} /></button>
+                    <input type="range" min="-400" max="400" value={graphicX} onChange={(e) => setGraphicX(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <button onClick={() => setGraphicX(x => x + 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronRight size={12} /></button>
+                  </div>
+                  <span className="text-[9px] font-bold text-black w-8">{graphicX}px</span>
+                </div>
+
+                <div className="w-[1px] h-4 bg-black/10" />
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-black/30">Posiz. Y</span>
+                  <div className="flex items-center bg-white/50 rounded-lg p-0.5 border border-black/5">
+                    <button onClick={() => setGraphicY(y => y + 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
+                    <input type="range" min="-400" max="400" value={graphicY} onChange={(e) => setGraphicY(parseInt(e.target.value))} className="w-20 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-2" />
+                    <button onClick={() => setGraphicY(y => y - 1)} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
+                  </div>
                   <span className="text-[9px] font-bold text-black w-8">{graphicY}px</span>
                 </div>
-                <button onClick={() => { setGraphicScale(100); setGraphicY(0); }} className="p-1.5 rounded-lg hover:bg-black/10 text-black/40 hover:text-black transition-all" title="Reset">
+
+                <button onClick={() => { setGraphicScale(100); setGraphicY(0); setGraphicX(0); }} className="p-1.5 rounded-lg hover:bg-black/10 text-black/40 hover:text-black transition-all" title="Reset">
                   <RefreshCcw size={14} />
                 </button>
               </div>
@@ -702,13 +727,14 @@ function App() {
               <div className="w-full h-full flex items-center justify-center p-4 md:p-12">
                 {selectedProduct ? (
                   <div className="relative w-full h-full flex items-center justify-center max-w-5xl mx-auto">
-                    <MockupCanvas
-                      product={selectedProduct}
-                      selections={selections[selectedProductId] || {}}
-                      graphic={selectedGraphic?.path || 'PLACEHOLDER'}
-                      graphicScale={graphicScale}
-                      graphicY={graphicY}
-                    />
+                      <MockupCanvas
+                        product={selectedProduct}
+                        selections={selections[selectedProductId] || {}}
+                        graphic={selectedGraphic?.path || 'PLACEHOLDER'}
+                        graphicScale={graphicScale}
+                        graphicY={graphicY}
+                        graphicX={graphicX}
+                      />
                   </div>
                 ) : (
                   <div className="text-center opacity-20">
