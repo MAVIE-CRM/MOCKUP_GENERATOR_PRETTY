@@ -12,6 +12,7 @@ interface GraphicAsset {
   name: string;
   path: string;
   folder: string;
+  fullPath: string;
 }
 
 interface ComponentAsset extends GraphicAsset {
