@@ -54,26 +54,12 @@ class OneDriveService {
 
     async findRootId() {
         if (this.rootId) return this.rootId;
-        
         const client = await this.getClient();
-        console.log('Ricerca della cartella MOCKUP v2...');
-        
         const searchResult = await client.api('/me/drive/root/search(q=\'MOCKUP\')').get();
-        
-        let folder = searchResult.value.find(item => 
-            item.folder && item.name.toUpperCase().includes('V2')
-        );
-
-        if (!folder) {
-            folder = searchResult.value.find(item => item.folder);
-        }
-
-        if (!folder) {
-            throw new Error('Cartella principale non trovata');
-        }
-
+        let folder = searchResult.value.find(item => item.folder && item.name.toUpperCase().includes('V2'));
+        if (!folder) folder = searchResult.value.find(item => item.folder);
+        if (!folder) throw new Error('Cartella principale non trovata');
         this.rootId = folder.id;
-        console.log(`CARTELLA UTILIZZATA: ${folder.name} (ID: ${folder.id})`);
         return this.rootId;
     }
 
@@ -89,7 +75,6 @@ class OneDriveService {
                 } else if (item.file) {
                     const name = item.name.toLowerCase();
                     if (name.includes('principale')) continue;
-                    
                     if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.svg')) {
                         results.push({
                             id: item.id,
@@ -102,9 +87,7 @@ class OneDriveService {
                 }
             }
             return results;
-        } catch (e) {
-            return [];
-        }
+        } catch (e) { return []; }
     }
 
     async getProducts() {
@@ -115,29 +98,30 @@ class OneDriveService {
             const subItems = await client.api(`/me/drive/items/${rootId}/children`).get();
 
             for (const item of subItems.value) {
-                // Cerchiamo qualsiasi cartella che non sia GRAFICHE
-                if (item.folder && item.name.toUpperCase().includes('GRAFICHE') === false) {
+                if (item.folder && item.name.toUpperCase() !== 'GRAFICHE') {
                     const components = {};
                     try {
                         const compItems = await client.api(`/me/drive/items/${item.id}/children`).get();
-                        for (const cDir of compItems.value) {
-                            if (cDir.folder || cDir.file) { // Alcuni componenti potrebbero essere singoli file
+                        
+                        // Se troviamo "LISCIO" o "AMMATCATO" direttamente qui (es. Lampada)
+                        const hasDirectVariants = compItems.value.some(i => i.folder && (i.name.toUpperCase().includes('LISCIO') || i.name.toUpperCase().includes('AMM')));
+                        
+                        if (hasDirectVariants) {
+                            // Creiamo un componente virtuale con il nome del prodotto
+                            const virtualCompName = item.name.toUpperCase();
+                            components[virtualCompName] = [];
+                            for (const cDir of compItems.value) {
+                                if (cDir.folder) {
+                                    const assets = await this._recursiveWalk(cDir.id, cDir.name);
+                                    components[virtualCompName].push(...assets);
+                                }
+                            }
+                        } else {
+                            // Struttura standard: Componente -> Cartelle
+                            for (const cDir of compItems.value) {
                                 if (cDir.folder) {
                                     const assets = await this._recursiveWalk(cDir.id, cDir.name);
                                     if (assets.length > 0) components[cDir.name] = assets;
-                                } else if (cDir.file) {
-                                    // Se è un file sciolto nel prodotto, lo mettiamo in una categoria "Generale"
-                                    const name = cDir.name.toLowerCase();
-                                    if (name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.svg')) {
-                                        if (!components['GENERALE']) components['GENERALE'] = [];
-                                        components['GENERALE'].push({
-                                            id: cDir.id,
-                                            name: cDir.name,
-                                            path: cDir.id,
-                                            fullPath: `/api/onedrive/file/${cDir.id}?name=${encodeURIComponent(cDir.name)}`,
-                                            folder: 'GENERALE'
-                                        });
-                                    }
                                 }
                             }
                         }
@@ -146,9 +130,7 @@ class OneDriveService {
                 }
             }
             return products;
-        } catch (error) {
-            throw error;
-        }
+        } catch (error) { throw error; }
     }
 
     async getGrafiche() {
@@ -156,22 +138,15 @@ class OneDriveService {
         const rootId = await this.findRootId();
         try {
             const parentItems = await client.api(`/me/drive/items/${rootId}/children`).get();
-            const targetFolder = parentItems.value.find(item => 
-                item.folder && item.name.toUpperCase().includes('GRAFICHE')
-            );
-
+            const targetFolder = parentItems.value.find(item => item.folder && item.name.toUpperCase().includes('GRAFICHE'));
             if (!targetFolder) return [];
-
             return await this._recursiveWalk(targetFolder.id, 'GRAFICHE');
-        } catch (error) {
-            return [];
-        }
+        } catch (error) { return []; }
     }
 
     async getFileStream(fileId) {
         const client = await this.getClient();
-        const response = await client.api(`/me/drive/items/${fileId}/content`).get();
-        return response;
+        return await client.api(`/me/drive/items/${fileId}/content`).get();
     }
 }
 
