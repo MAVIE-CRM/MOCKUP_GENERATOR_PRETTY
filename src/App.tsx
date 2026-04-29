@@ -516,7 +516,7 @@ function App() {
                       <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
                       {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
                         <button 
-                          onClick={() => handleSmartSwitch(cName)}
+                          onClick={handleSmartSwitch}
                           className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
                         >
                           Switch {currentCategory.includes('LISCIO') ? 'Amm' : 'Liscio'}
@@ -664,7 +664,7 @@ function App() {
                   className="px-4 py-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20" 
                   title="Switch Liscio/Ammatcato"
                 >
-                  <RefreshCw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
+                  <RefreshCcw size={16} className="group-hover:rotate-180 transition-transform duration-500" />
                   <span className="text-[10px] font-black uppercase tracking-widest">Switch</span>
                 </button>
                 <div className="w-[1px] h-4 bg-black/10" />
