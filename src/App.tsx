@@ -230,84 +230,47 @@ function App() {
   const handleSmartSwitch = () => {
     if (!selectedProduct) return;
     
-    console.log("SmartSwitch: Inizio procedura di switch...");
-    let switchedCount = 0;
     const newSelections = { ...selections[selectedProductId] };
+    let switched = false;
 
-    Object.entries(newSelections).forEach(([cName, currentAsset]) => {
-      const currentName = currentAsset.name.toUpperCase();
-      const currentFolder = currentAsset.folder.toUpperCase();
+    Object.keys(newSelections).forEach(cName => {
+      const asset = newSelections[cName];
+      const name = asset.name.toUpperCase();
+      const folder = asset.folder.toUpperCase();
       
-      const isLiscio = currentName.includes('_L') || currentFolder.includes('LISCIO');
-      const isAmm = currentName.includes('_A') || currentFolder.includes('AMM');
+      const isL = name.includes('_L') || folder.includes('LISCIO');
+      const isA = name.includes('_A') || folder.includes('AMM');
 
-      if (!isLiscio && !isAmm) {
-        console.log(`SmartSwitch: Componente ${cName} saltato (non è Liscio/Amm)`);
-        return;
-      }
-
-      const currentSuffix = isLiscio ? '_L' : '_A';
-      const targetSuffix = isLiscio ? '_A' : '_L';
-      const targetFolderPart = isLiscio ? 'AMM' : 'LISCIO';
-      
-      console.log(`SmartSwitch: [${cName}] ${isLiscio ? 'LISCIO' : 'AMM'} -> Cerco ${targetFolderPart}`);
-
-      const assets = selectedProduct.components[cName];
-
-      // 1. Tentativo: Match esatto del nome col suffisso cambiato
-      const expectedName = currentName.replace(currentSuffix, targetSuffix);
-      let targetAsset = assets.find(a => {
-        const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        return aName === expectedName && aFolder.includes(targetFolderPart);
-      });
-
-      // 2. Tentativo (Fallback): Solo stessa cartella e nome simile (se il suffisso non c'è nel file)
-      if (!targetAsset) {
-        console.log(`SmartSwitch: [${cName}] Tentativo fallback...`);
-        targetAsset = assets.find(a => {
-          const aFolder = a.folder.toUpperCase();
+      if (isL || isA) {
+        const from = isL ? '_L' : '_A';
+        const to = isL ? '_A' : '_L';
+        const targetFolder = isL ? 'AMM' : 'LISCIO';
+        
+        const possibleAssets = selectedProduct.components[cName];
+        const target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
-          const baseCurrent = currentName.split('.')[0].replace('_L', '').replace('_A', '');
-          const baseTarget = aName.split('.')[0].replace('_L', '').replace('_A', '');
-          return aFolder.includes(targetFolderPart) && baseTarget === baseCurrent;
+          const aFolder = a.folder.toUpperCase();
+          // Cerchiamo il nome con suffisso cambiato NELLA cartella corretta
+          return (aName.includes(to) || aName.replace(from, to) === aName) && aFolder.includes(targetFolder);
         });
-      }
 
-      if (targetAsset) {
-        console.log(`SmartSwitch: [${cName}] TROVATO -> ${targetAsset.name}`);
-        newSelections[cName] = targetAsset;
-        switchedCount++;
-      } else {
-        console.warn(`SmartSwitch: [${cName}] Nessuna controparte trovata.`);
+        if (target) {
+          newSelections[cName] = target;
+          switched = true;
+        }
       }
     });
 
-    if (switchedCount > 0) {
-      console.log(`SmartSwitch: Completato! Switchati ${switchedCount} elementi.`);
-      setSelections(prev => ({
-        ...prev,
-        [selectedProductId]: newSelections
-      }));
-      confetti({ 
-        particleCount: 50, 
-        spread: 40, 
-        origin: { y: 0.8 }, 
-        colors: ['#6366f1', '#a855f7', '#ec4899'] 
-      });
+    if (switched) {
+      setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
+      confetti({ particleCount: 40, spread: 50, origin: { y: 0.8 } });
     }
   };
 
   const handleSmartFit = async () => {
-    if (!selectedProduct || !selectedGraphic) {
-      setFloraStatus('Seleziona prodotto e grafica');
-      setTimeout(() => setFloraStatus(''), 3000);
-      return;
-    }
+    if (!selectedProduct || !selectedGraphic) return;
     
     setFloraStatus('Analisi Smart Fit...');
-    console.log("SmartFit: Avvio analisi pixel...");
-
     try {
       const mainCompName = Object.keys(selectedProduct.components).find(c => {
         const n = c.toUpperCase();
@@ -317,74 +280,59 @@ function App() {
       }) || Object.keys(selectedProduct.components)[0];
 
       const asset = selections[selectedProductId]?.[mainCompName];
-      if (!asset) throw new Error("Componente principale non selezionato");
+      if (!asset) return;
 
       const img = new Image();
       img.crossOrigin = "anonymous";
-      
-      // Prepariamo l'URL: se è del nostro server aggiungiamo bust, se è OneDrive esterno no
       const baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
       img.src = baseUrl.includes('api/onedrive/file') ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
       
       await new Promise((resolve, reject) => { 
         img.onload = resolve; 
-        img.onerror = () => reject(new Error("Errore caricamento immagine (CORS o Rete)"));
+        img.onerror = () => reject(new Error("Errore caricamento"));
       });
 
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
       canvas.height = 1250;
       const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error("Impossibile creare contesto grafico");
+      if (!ctx) return;
 
       ctx.drawImage(img, 0, 0, 1000, 1250);
-      const imageData = ctx.getImageData(0, 0, 1000, 1250);
-      const data = imageData.data;
+      const data = ctx.getImageData(0, 0, 1000, 1250).data;
 
       let minX = 1000, maxX = 0, minY = 1250, maxY = 0;
-      let foundPixels = 0;
-
       for (let y = 0; y < 1250; y += 4) {
         for (let x = 0; x < 1000; x += 4) {
-          const idx = (y * 1000 + x) * 4;
-          if (data[idx + 3] > 40) {
+          if (data[(y * 1000 + x) * 4 + 3] > 50) { // Soglia più alta per ignorare ombre
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
-            foundPixels++;
           }
         }
       }
 
-      if (foundPixels < 50) throw new Error("Area prodotto non trovata");
+      if (maxX > minX) {
+        const compWidth = maxX - minX;
+        const compHeight = maxY - minY;
+        const compCenterX = minX + (compWidth / 2);
+        const compCenterY = minY + (compHeight / 2); // Centro geometrico puro
 
-      const compWidth = maxX - minX;
-      const compHeight = maxY - minY;
-      const compCenterX = minX + (compWidth / 2);
-      const compCenterY = minY + (compHeight * 0.55);
+        const targetWidth = compWidth * 0.75;
+        const newScale = Math.round((targetWidth / 285) * 100);
+        const relativeY = Math.round(compCenterY - (1250 * 0.74));
+        const relativeX = Math.round(compCenterX - 500);
 
-      console.log(`SmartFit: Bounds trovati -> L:${compWidth} H:${compHeight} Centro:[${compCenterX}, ${compCenterY}]`);
-
-      const targetGraphicWidth = compWidth * 0.72;
-      const newScale = Math.round((targetGraphicWidth / 285) * 100);
-      
-      const jarCenterY = 1250 * 0.74; 
-      const relativeY = Math.round(compCenterY - jarCenterY);
-      const relativeX = Math.round(compCenterX - 500);
-
-      setGraphicScale(Math.min(300, Math.max(10, newScale)));
-      setGraphicY(relativeY);
-      setGraphicX(relativeX);
-      
-      setFloraStatus('Smart Fit: Ottimizzato! ✨');
+        setGraphicScale(Math.min(300, Math.max(10, newScale)));
+        setGraphicY(relativeY);
+        setGraphicX(relativeX);
+        setFloraStatus('Ottimizzato! ✨');
+      }
       setTimeout(() => setFloraStatus(''), 2000);
-      confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
-      
-    } catch (err: any) {
-      console.error("SmartFit Error:", err);
-      setFloraStatus(`Errore: ${err.message}`);
-      setTimeout(() => setFloraStatus(''), 4000);
+    } catch (err) {
+      setFloraStatus('Errore Smart Fit');
+      setTimeout(() => setFloraStatus(''), 3000);
     }
   };
 
