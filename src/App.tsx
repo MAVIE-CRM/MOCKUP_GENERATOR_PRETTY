@@ -299,9 +299,15 @@ function App() {
   };
 
   const handleSmartFit = async () => {
-    if (!selectedProduct || !selectedGraphic) return;
+    if (!selectedProduct || !selectedGraphic) {
+      setFloraStatus('Seleziona prodotto e grafica');
+      setTimeout(() => setFloraStatus(''), 3000);
+      return;
+    }
     
     setFloraStatus('Analisi Smart Fit...');
+    console.log("SmartFit: Avvio analisi pixel...");
+
     try {
       const mainCompName = Object.keys(selectedProduct.components).find(c => {
         const n = c.toUpperCase();
@@ -311,80 +317,73 @@ function App() {
       }) || Object.keys(selectedProduct.components)[0];
 
       const asset = selections[selectedProductId]?.[mainCompName];
-      if (!asset) {
-        setFloraStatus('Seleziona un prodotto');
-        return;
-      }
+      if (!asset) throw new Error("Componente principale non selezionato");
 
       const img = new Image();
       img.crossOrigin = "anonymous";
-      // Aggiungiamo un timestamp per evitare cache browser che blocca CORS
-      const bust = Date.now();
+      
+      // Prepariamo l'URL: se è del nostro server aggiungiamo bust, se è OneDrive esterno no
       const baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-      img.src = `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${bust}`;
+      img.src = baseUrl.includes('api/onedrive/file') ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
       
       await new Promise((resolve, reject) => { 
         img.onload = resolve; 
-        img.onerror = () => reject(new Error("Errore caricamento immagine per analisi"));
+        img.onerror = () => reject(new Error("Errore caricamento immagine (CORS o Rete)"));
       });
 
       const canvas = document.createElement('canvas');
       canvas.width = 1000;
       canvas.height = 1250;
       const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error("Canvas context non disponibile");
+      if (!ctx) throw new Error("Impossibile creare contesto grafico");
 
       ctx.drawImage(img, 0, 0, 1000, 1250);
       const imageData = ctx.getImageData(0, 0, 1000, 1250);
       const data = imageData.data;
 
-      // Trova i confini del componente (non trasparente)
       let minX = 1000, maxX = 0, minY = 1250, maxY = 0;
-      let pixelsFound = 0;
+      let foundPixels = 0;
 
-      for (let y = 0; y < 1250; y += 2) {
-        for (let x = 0; x < 1000; x += 2) {
+      for (let y = 0; y < 1250; y += 4) {
+        for (let x = 0; x < 1000; x += 4) {
           const idx = (y * 1000 + x) * 4;
-          if (data[idx + 3] > 30) { // Soglia alpha per ignorare ombre leggere
+          if (data[idx + 3] > 40) {
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
             if (y < minY) minY = y;
             if (y > maxY) maxY = y;
-            pixelsFound++;
+            foundPixels++;
           }
         }
       }
 
-      if (pixelsFound < 100) throw new Error("Prodotto non rilevato nell'immagine");
+      if (foundPixels < 50) throw new Error("Area prodotto non trovata");
 
       const compWidth = maxX - minX;
       const compHeight = maxY - minY;
       const compCenterX = minX + (compWidth / 2);
       const compCenterY = minY + (compHeight * 0.55);
 
-      const targetGraphicWidth = compWidth * 0.72; // 72% della larghezza
+      console.log(`SmartFit: Bounds trovati -> L:${compWidth} H:${compHeight} Centro:[${compCenterX}, ${compCenterY}]`);
+
+      const targetGraphicWidth = compWidth * 0.72;
       const newScale = Math.round((targetGraphicWidth / 285) * 100);
       
       const jarCenterY = 1250 * 0.74; 
       const relativeY = Math.round(compCenterY - jarCenterY);
       const relativeX = Math.round(compCenterX - 500);
 
-      setGraphicScale(Math.min(250, Math.max(10, newScale)));
+      setGraphicScale(Math.min(300, Math.max(10, newScale)));
       setGraphicY(relativeY);
       setGraphicX(relativeX);
       
-      setFloraStatus('Smart Fit Applicato! ✨');
+      setFloraStatus('Smart Fit: Ottimizzato! ✨');
       setTimeout(() => setFloraStatus(''), 2000);
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.8 } });
       
-      confetti({ 
-        particleCount: 80, 
-        spread: 60, 
-        origin: { y: 0.8 }, 
-        colors: ['#6366f1', '#10b981', '#f59e0b'] 
-      });
     } catch (err: any) {
       console.error("SmartFit Error:", err);
-      setFloraStatus(`Errore: ${err.message || 'Sconosciuto'}`);
+      setFloraStatus(`Errore: ${err.message}`);
       setTimeout(() => setFloraStatus(''), 4000);
     }
   };
