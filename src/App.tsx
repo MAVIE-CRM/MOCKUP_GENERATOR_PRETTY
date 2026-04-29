@@ -250,6 +250,74 @@ function App() {
     }
   };
 
+  const handleSmartFit = async () => {
+    if (!selectedProduct) return;
+    
+    // Cerchiamo il componente principale (Contenitore o Flacone)
+    const containerComp = Object.keys(selectedProduct.components).find(c => 
+      c.toUpperCase().includes('CONTENITORE') || c.toUpperCase().includes('FLACONE') || c.toUpperCase().includes('JAR')
+    );
+    
+    if (!containerComp) return;
+    
+    const asset = selections[selectedProductId]?.[containerComp];
+    if (!asset) return;
+
+    const assetUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+    
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = assetUrl;
+    
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      
+      let minX = canvas.width, maxX = 0, minY = canvas.height, maxY = 0;
+      let found = false;
+
+      // Scansioniamo i pixel per trovare l'area non trasparente
+      for (let y = 0; y < canvas.height; y += 5) {
+        for (let x = 0; x < canvas.width; x += 5) {
+          const alpha = imageData[(y * canvas.width + x) * 4 + 3];
+          if (alpha > 50) { // Pixel non trasparente
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+            found = true;
+          }
+        }
+      }
+
+      if (found) {
+        const jarWidth = maxX - minX;
+        const jarHeight = maxY - minY;
+        const jarCenterY = minY + (jarHeight / 2);
+        
+        // Calcoliamo la scala (usando circa l'80% della larghezza del contenitore per il padding)
+        // Supponiamo che la grafica originale sia circa 1000px di base nel canvas
+        const targetWidth = jarWidth * 0.75;
+        const newScale = Math.round((targetWidth / 500) * 100); // 500 è una base empirica per il nostro MockupCanvas
+        
+        // Calcoliamo la posizione Y relativa al centro dell'immagine (1000x1250)
+        const relativeY = Math.round((jarCenterY - 625)); // 625 è il centro verticale di 1250
+        
+        setGraphicScale(newScale);
+        setGraphicY(relativeY);
+        
+        confetti({ particleCount: 50, spread: 30, origin: { y: 0.8 }, colors: ['#a855f7'] });
+      }
+    };
+  };
+
   const getUniqueAssets = (assets: ComponentAsset[]) => {
     const seen = new Set();
     return assets.filter(asset => {
@@ -575,7 +643,11 @@ function App() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-3">
+                <button onClick={handleSmartFit} className="p-2.5 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group" title="Adatta Automaticamente">
+                  <Wand2 size={16} className="group-hover:rotate-12 transition-transform" />
+                  <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
+                </button>
+                <div className="w-[1px] h-4 bg-black/10" />
                 <button 
                   onClick={async () => {
                     setFloraStatus('Aggiornamento asset...');
