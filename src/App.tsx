@@ -92,7 +92,7 @@ function App() {
         }
       } catch (err: any) {
         console.error("Errore nel caricamento dati", err);
-        setConnectionError(`Impossibile connettersi al server (3001). Assicurati che sia avviato. Dettaglio: ${err.message}`);
+        setConnectionError(`Errore di connessione a ${config.apiUrl}. Verifica che il server Railway sia attivo. Dettaglio: ${err.message}`);
       }
     };
     init();
