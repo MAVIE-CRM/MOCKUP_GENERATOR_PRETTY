@@ -230,43 +230,71 @@ function App() {
   const handleSmartSwitch = () => {
     if (!selectedProduct) return;
     
+    console.log("SmartSwitch: Inizio procedura di switch...");
     let switchedCount = 0;
     const newSelections = { ...selections[selectedProductId] };
 
     Object.entries(newSelections).forEach(([cName, currentAsset]) => {
       const currentName = currentAsset.name.toUpperCase();
-      const isLiscio = currentName.includes('_L');
-      const isAmm = currentName.includes('_A');
+      const currentFolder = currentAsset.folder.toUpperCase();
+      
+      const isLiscio = currentName.includes('_L') || currentFolder.includes('LISCIO');
+      const isAmm = currentName.includes('_A') || currentFolder.includes('AMM');
 
-      if (!isLiscio && !isAmm) return;
+      if (!isLiscio && !isAmm) {
+        console.log(`SmartSwitch: Componente ${cName} saltato (non è Liscio/Amm)`);
+        return;
+      }
 
       const currentSuffix = isLiscio ? '_L' : '_A';
       const targetSuffix = isLiscio ? '_A' : '_L';
       const targetFolderPart = isLiscio ? 'AMM' : 'LISCIO';
       
+      console.log(`SmartSwitch: [${cName}] ${isLiscio ? 'LISCIO' : 'AMM'} -> Cerco ${targetFolderPart}`);
+
       const assets = selectedProduct.components[cName];
 
-      // Cerchiamo l'asset che ha lo stesso nome ma col suffisso cambiato e nella cartella giusta
-      const targetAsset = assets.find(a => {
+      // 1. Tentativo: Match esatto del nome col suffisso cambiato
+      const expectedName = currentName.replace(currentSuffix, targetSuffix);
+      let targetAsset = assets.find(a => {
         const aName = a.name.toUpperCase();
         const aFolder = a.folder.toUpperCase();
-        const expectedName = currentName.replace(currentSuffix, targetSuffix);
-        
         return aName === expectedName && aFolder.includes(targetFolderPart);
       });
 
+      // 2. Tentativo (Fallback): Solo stessa cartella e nome simile (se il suffisso non c'è nel file)
+      if (!targetAsset) {
+        console.log(`SmartSwitch: [${cName}] Tentativo fallback...`);
+        targetAsset = assets.find(a => {
+          const aFolder = a.folder.toUpperCase();
+          const aName = a.name.toUpperCase();
+          const baseCurrent = currentName.split('.')[0].replace('_L', '').replace('_A', '');
+          const baseTarget = aName.split('.')[0].replace('_L', '').replace('_A', '');
+          return aFolder.includes(targetFolderPart) && baseTarget === baseCurrent;
+        });
+      }
+
       if (targetAsset) {
+        console.log(`SmartSwitch: [${cName}] TROVATO -> ${targetAsset.name}`);
         newSelections[cName] = targetAsset;
         switchedCount++;
+      } else {
+        console.warn(`SmartSwitch: [${cName}] Nessuna controparte trovata.`);
       }
     });
 
     if (switchedCount > 0) {
+      console.log(`SmartSwitch: Completato! Switchati ${switchedCount} elementi.`);
       setSelections(prev => ({
         ...prev,
         [selectedProductId]: newSelections
       }));
-      confetti({ particleCount: 40, spread: 30, origin: { y: 0.8 }, colors: ['#6366f1', '#a855f7'] });
+      confetti({ 
+        particleCount: 50, 
+        spread: 40, 
+        origin: { y: 0.8 }, 
+        colors: ['#6366f1', '#a855f7', '#ec4899'] 
+      });
     }
   };
 
