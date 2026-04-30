@@ -41,6 +41,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -62,7 +63,6 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
-
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,6 +75,8 @@ function App() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!password) return;
+    setIsLoggingIn(true);
     fetchData(password);
   };
 
@@ -86,23 +88,34 @@ function App() {
         'x-api-key': pass 
       };
 
-      // Fetch Prodotti
-      const pRes = await fetch(config.endpoints.products, { headers: authHeaders });
+      // Avviamo entrambi i fetch in parallelo per massima velocità
+      const [pRes, gRes] = await Promise.all([
+        fetch(config.endpoints.products, { headers: authHeaders }),
+        fetch(config.endpoints.grafiche, { headers: authHeaders })
+      ]);
+
       if (pRes.status === 401) {
         setLoginError(true);
         setIsAuthenticated(false);
+        setIsLoggingIn(false);
         localStorage.removeItem('pretty_auth');
         return;
       }
-      if (!pRes.ok) throw new Error(`Errore Server Prodotti: ${pRes.status}`);
+
+      if (!pRes.ok || !gRes.ok) throw new Error(`Errore Server: ${pRes.status} / ${gRes.status}`);
       
-      const pData: Product[] = await pRes.json();
+      const [pData, gData]: [Product[], GraphicAsset[]] = await Promise.all([
+        pRes.json(),
+        gRes.json()
+      ]);
       
-      // Se arriviamo qui, la password è corretta
+      // Password corretta!
       setIsAuthenticated(true);
       localStorage.setItem('pretty_auth', pass);
       setLoginError(false);
+      setIsLoggingIn(false);
 
+      // Setup Prodotti
       setProducts(pData);
       if (pData.length > 0) {
         setSelectedProductId(pData[0].id);
@@ -116,10 +129,7 @@ function App() {
         setSelections(initialSelections);
       }
 
-      // Fetch Grafiche
-      const gRes = await fetch(config.endpoints.grafiche, { headers: authHeaders });
-      if (!gRes.ok) throw new Error(`Errore Server Grafiche: ${gRes.status}`);
-      const gData: GraphicAsset[] = await gRes.json();
+      // Setup Grafiche
       setGraficheList(gData);
       if (gData.length > 0) {
         setSelectedGraphic(gData[0]);
@@ -128,8 +138,10 @@ function App() {
     } catch (err: any) {
       console.error("Errore nel caricamento dati", err);
       setConnectionError(err.message);
+      setIsLoggingIn(false);
     }
   };
+
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
@@ -551,9 +563,18 @@ function App() {
               
               <button
                 type="submit"
-                className="w-full py-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 group"
+                disabled={isLoggingIn}
+                className="w-full py-5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-600/50 text-white transition-all font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 group"
               >
-                Entra nello Studio <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                {isLoggingIn ? (
+                  <>
+                    <RefreshCcw size={18} className="animate-spin" /> Entrata in corso...
+                  </>
+                ) : (
+                  <>
+                    Entra nello Studio <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
               </button>
             </form>
             
