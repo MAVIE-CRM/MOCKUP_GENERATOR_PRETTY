@@ -298,35 +298,34 @@ function App() {
         
         const fromSuffix = movingToAmm ? '_L' : '_A';
         const toSuffix = movingToAmm ? '_A' : '_L';
-        const targetFolderPart = movingToAmm ? 'AMM' : 'LISCIO';
+        const targetFolderPart = movingToAmm ? 'AMMACCATO' : 'LISCIO';
         
-        console.log(`SmartSwitch: [${cName}] Stato attuale: ${movingToAmm ? 'LISCIO' : 'AMM'} -> Cerco ${targetFolderPart}`);
+        console.log(`SmartSwitch: [${cName}] Analisi ${movingToAmm ? 'L -> A' : 'A -> L'}`);
 
         const possibleAssets = selectedProduct.components[cName];
         if (!possibleAssets) return;
 
-        // Strategia di ricerca a 3 livelli
-        // 1. Match perfetto del nome con suffisso cambiato
         const expectedName = name.replace(fromSuffix, toSuffix);
+        
+        // 1. Match Perfetto (Nome + Cartella Specifica)
         let target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
           const aFolder = a.folder.toUpperCase();
           return aName === expectedName && aFolder.includes(targetFolderPart);
         });
 
-        // 2. Match colore base (es. NERO) nella cartella target
+        // 2. Fallback (Nome + Qualsiasi cartella gemella)
         if (!target) {
-          const currColor = name.split('.')[0].replace('_L', '').replace('_A', '').trim();
-          target = possibleAssets.find(a => {
-            const aName = a.name.toUpperCase();
-            const aFolder = a.folder.toUpperCase();
-            return aFolder.includes(targetFolderPart) && aName.includes(currColor);
-          });
+          target = possibleAssets.find(a => a.name.toUpperCase() === expectedName);
         }
 
-        // 3. Ultima spiaggia: il primo file nella cartella target
+        // 3. Fallback (Contiene Suffix in cartella target)
         if (!target) {
-          target = possibleAssets.find(a => a.folder.toUpperCase().includes(targetFolderPart));
+          const baseColor = name.replace('_L', '').replace('_A', '').split('.')[0];
+          target = possibleAssets.find(a => {
+            const aName = a.name.toUpperCase();
+            return aName.includes(baseColor) && aName.includes(toSuffix);
+          });
         }
 
         if (target) {
