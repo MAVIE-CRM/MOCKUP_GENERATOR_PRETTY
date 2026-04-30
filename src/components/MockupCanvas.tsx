@@ -58,30 +58,36 @@ const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY, gr
       console.log("MockupCanvas: Inizio caricamento asset per", product.id);
 
       // Load Product Components
+      const pass = localStorage.getItem('pretty_auth') || '';
       const componentTasks = Object.entries(selections).map(async ([cName, asset]) => {
-        const url = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-        console.log(`MockupCanvas: Caricamento componente ${cName} da ${url}`);
-        const img = await loadImage(url, true); // Always use anonymous for cross-origin
-        if (!img) console.error(`MockupCanvas: ERRORE caricamento ${cName}`);
+        let url = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+        // Aggiungiamo il token di autenticazione se è una chiamata al nostro server
+        if (url.includes(config.apiUrl)) {
+          url += (url.includes('?') ? '&' : '?') + `token=${pass}`;
+        }
+        
+        console.log(`MockupCanvas: Caricamento componente ${cName}`);
+        const img = await loadImage(url, true);
         newImages[cName] = img;
       });
 
       // Load Graphic
       const hasGraphic = graphic && graphic !== 'PLACEHOLDER';
-      
-      // If graphic is an ID (OneDrive), use proxy, otherwise use local path
       let graphicUrl = null;
       if (hasGraphic) {
         if (graphic.startsWith('http')) {
           graphicUrl = graphic;
-        } else if (graphic.length > 20) { // Likely a OneDrive ID
+        } else if (graphic.length > 20) {
           graphicUrl = config.endpoints.file(graphic);
         } else {
           graphicUrl = `${config.apiUrl}/grafiche-files/${graphic}`;
         }
+        
+        // Aggiungiamo il token anche alla grafica
+        if (graphicUrl && graphicUrl.includes(config.apiUrl)) {
+          graphicUrl += (graphicUrl.includes('?') ? '&' : '?') + `token=${pass}`;
+        }
       }
-
-      if (graphicUrl) console.log(`MockupCanvas: Caricamento grafica da ${graphicUrl}`);
       
       const graphicTask = graphicUrl ? loadImage(graphicUrl, true) : Promise.resolve(null);
 

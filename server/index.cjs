@@ -21,10 +21,11 @@ async function startServer() {
         const AUTH_PASSWORD = process.env.AUTH_PASSWORD || 'pretty2024';
         
         const authMiddleware = (req, res, next) => {
-            // Saltiamo il controllo per la root e le rotte pubbliche se necessario
             if (req.path === '/' || req.path === '/api/health') return next();
             
-            const clientPass = req.headers['x-api-key'];
+            // Accettiamo la password sia dall'header che dal parametro 'token' nell'URL (necessario per le immagini)
+            const clientPass = req.headers['x-api-key'] || req.query.token;
+            
             if (clientPass === AUTH_PASSWORD) {
                 next();
             } else {

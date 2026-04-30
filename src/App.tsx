@@ -342,9 +342,16 @@ function App() {
       const asset = selections[selectedProductId]?.[mainCompName];
       if (!asset) return;
 
+      const pass = localStorage.getItem('pretty_auth') || '';
       const img = new Image();
       img.crossOrigin = "anonymous";
-      const baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+      let baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+      
+      // Aggiungiamo il token se è il nostro server
+      if (baseUrl.includes(config.apiUrl)) {
+        baseUrl += (baseUrl.includes('?') ? '&' : '?') + `token=${pass}`;
+      }
+      
       img.src = baseUrl.includes('api/onedrive/file') ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
       
       await new Promise((resolve, reject) => { 
