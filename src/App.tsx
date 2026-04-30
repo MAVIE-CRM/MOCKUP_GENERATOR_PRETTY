@@ -267,83 +267,74 @@ function App() {
   };
 
   const handleSmartSwitch = () => {
-    if (!selectedProduct) {
-      console.warn("SmartSwitch: Nessun prodotto selezionato.");
-      return;
-    }
+    if (!selectedProduct || !selections[selectedProductId]) return;
     
     const currentSelections = selections[selectedProductId];
-    if (!currentSelections) {
-      console.warn("SmartSwitch: Selezioni non trovate.");
-      return;
-    }
-
-    setFloraStatus('Switching varianti...');
     const newSelections = { ...currentSelections };
     let switchedCount = 0;
 
-    Object.keys(newSelections).forEach(cName => {
-      const asset = newSelections[cName];
+    // 1. Determiniamo la direzione globale basandoci sul primo componente switchabile che troviamo
+    let globalTarget: 'LISCIO' | 'AMMACCATO' | null = null;
+
+    for (const cName of Object.keys(currentSelections)) {
+      const asset = currentSelections[cName];
+      const path = asset.fullPath.toUpperCase();
       const name = asset.name.toUpperCase();
-      const folder = asset.folder.toUpperCase();
-      const fullPath = asset.fullPath.toUpperCase();
       
-      // Rilevamento stato attuale super-flessibile
-      const isL = fullPath.includes('LISCIO') || name.includes('_L');
-      const isA = fullPath.includes('AMM') || name.includes('_A');
+      if (path.includes('LISCIO') || name.includes('_L')) {
+        globalTarget = 'AMMACCATO';
+        break;
+      } else if (path.includes('AMM') || name.includes('_A')) {
+        globalTarget = 'LISCIO';
+        break;
+      }
+    }
 
-      if (isL || isA) {
-        // Se siamo in un percorso che contiene LISCIO, vogliamo andare in AMM e viceversa
-        const movingToAmm = (fullPath.includes('LISCIO') && !fullPath.includes('AMM')) || (isL && !isA);
-        
-        const fromSuffix = movingToAmm ? '_L' : '_A';
-        const toSuffix = movingToAmm ? '_A' : '_L';
-        const targetFolderPart = movingToAmm ? 'AMMACCATO' : 'LISCIO';
-        
-        console.log(`SmartSwitch: [${cName}] Analisi ${movingToAmm ? 'L -> A' : 'A -> L'}`);
+    if (!globalTarget) {
+      console.warn("SmartSwitch: Nessun componente liscio/ammaccato trovato.");
+      return;
+    }
 
-        const possibleAssets = selectedProduct.components[cName];
-        if (!possibleAssets) return;
+    console.log(`SmartSwitch: Direzione impostata -> ${globalTarget}`);
 
-        const expectedName = name.replace(fromSuffix, toSuffix);
-        
-        // 1. Match Perfetto (Nome + Cartella Specifica)
-        let target = possibleAssets.find(a => {
-          const aName = a.name.toUpperCase();
-          const aFolder = a.folder.toUpperCase();
-          return aName === expectedName && aFolder.includes(targetFolderPart);
-        });
+    // 2. Applichiamo la direzione a tutti i componenti
+    Object.keys(currentSelections).forEach(cName => {
+      const asset = currentSelections[cName];
+      const name = asset.name.toUpperCase();
+      const fromSuffix = globalTarget === 'AMMACCATO' ? '_L' : '_A';
+      const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
+      const targetFolder = globalTarget;
 
-        // 2. Fallback (Nome + Qualsiasi cartella gemella)
-        if (!target) {
-          target = possibleAssets.find(a => a.name.toUpperCase() === expectedName);
-        }
+      const expectedName = name.replace(fromSuffix, toSuffix);
+      const possibleAssets = selectedProduct.components[cName];
+      if (!possibleAssets) return;
 
-        // 3. Fallback (Contiene Suffix in cartella target)
-        if (!target) {
-          const baseColor = name.replace('_L', '').replace('_A', '').split('.')[0];
-          target = possibleAssets.find(a => {
-            const aName = a.name.toUpperCase();
-            return aName.includes(baseColor) && aName.includes(toSuffix);
-          });
-        }
+      // Ricerca del gemello
+      const target = possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        return aName === expectedName && (aFolder.includes(targetFolder) || aFolder.includes(targetFolder.substring(0, 3)));
+      }) || possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
+        return aName === expectedName;
+      }) || possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        const baseColor = name.replace('_L', '').replace('_A', '').split('.')[0];
+        return aName.includes(baseColor) && aName.includes(toSuffix) && aFolder.includes(targetFolder.substring(0, 3));
+      });
 
-        if (target) {
-          newSelections[cName] = target;
-          switchedCount++;
-          console.log(`SmartSwitch: [${cName}] TROVATO -> ${target.name}`);
-        }
+      if (target) {
+        newSelections[cName] = target;
+        switchedCount++;
       }
     });
 
     if (switchedCount > 0) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      setFloraStatus(`Switchati ${switchedCount} pezzi! ✨`);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#10b981'] });
+      setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
       setTimeout(() => setFloraStatus(''), 2000);
-    } else {
-      setFloraStatus('Nessun gemello trovato');
-      setTimeout(() => setFloraStatus(''), 3000);
     }
   };
 
