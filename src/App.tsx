@@ -267,63 +267,84 @@ function App() {
   };
 
   const handleSmartSwitch = () => {
-    if (!selectedProduct || !selections[selectedProductId]) {
-      console.warn("SmartSwitch: Prodotto non selezionato o asset mancanti.");
+    if (!selectedProduct) {
+      console.warn("SmartSwitch: Nessun prodotto selezionato.");
       return;
     }
     
-    console.log("SmartSwitch: Avvio procedura...");
-    const newSelections = { ...selections[selectedProductId] };
+    const currentSelections = selections[selectedProductId];
+    if (!currentSelections) {
+      console.warn("SmartSwitch: Selezioni non trovate.");
+      return;
+    }
+
+    setFloraStatus('Switching varianti...');
+    const newSelections = { ...currentSelections };
     let switchedCount = 0;
 
     Object.keys(newSelections).forEach(cName => {
       const asset = newSelections[cName];
-      const currentName = asset.name.toUpperCase();
-      const currentFolder = asset.folder.toUpperCase();
+      const name = asset.name.toUpperCase();
+      const folder = asset.folder.toUpperCase();
+      const fullPath = asset.fullPath.toUpperCase();
       
-      const isL = currentFolder.includes('LISCIO') || currentName.includes('_L');
-      const isA = currentFolder.includes('AMM') || currentName.includes('_A');
+      // Rilevamento stato attuale super-flessibile
+      const isL = fullPath.includes('LISCIO') || name.includes('_L');
+      const isA = fullPath.includes('AMM') || name.includes('_A');
 
       if (isL || isA) {
-        const movingToAmm = currentFolder.includes('LISCIO') || (isL && !currentFolder.includes('AMM'));
+        // Se siamo in un percorso che contiene LISCIO, vogliamo andare in AMM e viceversa
+        const movingToAmm = (fullPath.includes('LISCIO') && !fullPath.includes('AMM')) || (isL && !isA);
+        
         const fromSuffix = movingToAmm ? '_L' : '_A';
         const toSuffix = movingToAmm ? '_A' : '_L';
         const targetFolderPart = movingToAmm ? 'AMM' : 'LISCIO';
         
-        console.log(`SmartSwitch: [${cName}] ${movingToAmm ? 'L -> A' : 'A -> L'}`);
+        console.log(`SmartSwitch: [${cName}] Stato attuale: ${movingToAmm ? 'LISCIO' : 'AMM'} -> Cerco ${targetFolderPart}`);
 
-        const expectedName = currentName.replace(fromSuffix, toSuffix);
         const possibleAssets = selectedProduct.components[cName];
-        
-        // 1. Match Preciso
+        if (!possibleAssets) return;
+
+        // Strategia di ricerca a 3 livelli
+        // 1. Match perfetto del nome con suffisso cambiato
+        const expectedName = name.replace(fromSuffix, toSuffix);
         let target = possibleAssets.find(a => {
           const aName = a.name.toUpperCase();
           const aFolder = a.folder.toUpperCase();
           return aName === expectedName && aFolder.includes(targetFolderPart);
         });
 
-        // 2. Fallback: Match Base (stesso colore)
+        // 2. Match colore base (es. NERO) nella cartella target
         if (!target) {
-          const currBase = currentName.split('.')[0].replace('_L', '').replace('_A', '').trim();
+          const currColor = name.split('.')[0].replace('_L', '').replace('_A', '').trim();
           target = possibleAssets.find(a => {
-            const aName = a.name.toUpperCase().split('.')[0].replace('_L', '').replace('_A', '').trim();
+            const aName = a.name.toUpperCase();
             const aFolder = a.folder.toUpperCase();
-            return aName === currBase && aFolder.includes(targetFolderPart);
+            return aFolder.includes(targetFolderPart) && aName.includes(currColor);
           });
+        }
+
+        // 3. Ultima spiaggia: il primo file nella cartella target
+        if (!target) {
+          target = possibleAssets.find(a => a.folder.toUpperCase().includes(targetFolderPart));
         }
 
         if (target) {
           newSelections[cName] = target;
           switchedCount++;
+          console.log(`SmartSwitch: [${cName}] TROVATO -> ${target.name}`);
         }
       }
     });
 
     if (switchedCount > 0) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      confetti({ particleCount: 60, spread: 60, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
+      setFloraStatus(`Switchati ${switchedCount} pezzi! ✨`);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#10b981'] });
+      setTimeout(() => setFloraStatus(''), 2000);
     } else {
-      console.warn("SmartSwitch: Nessuna controparte trovata per i componenti selezionati.");
+      setFloraStatus('Nessun gemello trovato');
+      setTimeout(() => setFloraStatus(''), 3000);
     }
   };
 
