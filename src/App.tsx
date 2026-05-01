@@ -787,38 +787,41 @@ function App() {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
-              // 1. Categorie Master per i pulsanti (LISCIO, AMMACCATO)
+              // 1. MASTER CATEGORIES (Livello 1: LISCIO, AMMACCATO)
               const categories = Array.from(new Set(assets.map(a => {
-                const parts = a.folder.split(/[/\\]/);
-                return parts[0].toUpperCase();
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                return pathParts[0]?.toUpperCase();
               }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
-              const sParts = selectedAsset?.folder.split(/[/\\]/) || [];
+              const sParts = selectedAsset?.folder.split(/[/\\]/).filter(p => p) || [];
               let currentCategory = sParts[0]?.toUpperCase() || categories[0];
               
-              // 2. Assets della categoria selezionata
-              const masterAssets = assets.filter(a => a.folder.toUpperCase().startsWith(currentCategory));
+              // 2. FILTRO ASSETS PER CATEGORIA SELEZIONATA
+              const masterAssets = assets.filter(a => {
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                return pathParts[0]?.toUpperCase() === currentCategory;
+              });
 
-              // 3. Asset Standard vs Sub-Sections (es. METAL)
+              // 3. ASSET STANDARD (Direttamente in LISCIO/AMMACCATO)
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const f = a.folder.toUpperCase();
-                // È standard se è proprio nella cartella master (es. "LISCIO")
-                // e non in una sottocartella (es. "LISCIO/METAL")
-                const parts = f.split(/[/\\]/);
-                return parts.length === 1 || (parts.length === 2 && parts[1] === '');
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                return pathParts.length === 1; 
               }));
 
+              // 4. SOTTO-SEZIONI DINAMICHE (Livello 2: METAL, SPECIAL, ecc.)
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
-                const parts = a.folder.split(/[/\\]/);
-                return parts.length > 1 && parts[1] !== '';
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                return pathParts.length > 1;
               }).map(a => a.folder.split(/[/\\]/)[1].toUpperCase()))).sort();
 
               const switchCategory = (cat: string) => {
-                // Cerchiamo di mantenere lo stesso colore se possibile
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
-                const target = (currentColor && assets.find(a => a.folder.toUpperCase().startsWith(cat) && a.name.toUpperCase().includes(currentColor))) ||
-                               assets.find(a => a.folder.toUpperCase().startsWith(cat));
+                const target = (currentColor && assets.find(a => {
+                  const p = a.folder.split(/[/\\]/).filter(f => f);
+                  return p[0]?.toUpperCase() === cat && a.name.toUpperCase().includes(currentColor);
+                })) || assets.find(a => a.folder.split(/[/\\]/)[0]?.toUpperCase() === cat);
+                
                 if (target) handleSelection(cName, target);
               };
 
@@ -850,6 +853,7 @@ function App() {
                     </div>
                   )}
 
+                  {/* ASSET NELLA CARTELLA PRINCIPALE */}
                   <div className="flex flex-wrap gap-2">
                     {standardAssets.map((asset) => (
                       <button
@@ -864,8 +868,12 @@ function App() {
                     ))}
                   </div>
 
+                  {/* FINITURE DIFFERENTI (SOTTO-CARTELLE) */}
                   {subFolders.map(sub => {
-                    const subAssets = getUniqueAssets(masterAssets.filter(a => a.folder.toUpperCase().includes(sub)));
+                    const subAssets = getUniqueAssets(masterAssets.filter(a => {
+                      const p = a.folder.split(/[/\\]/).filter(f => f);
+                      return p[1]?.toUpperCase() === sub;
+                    }));
                     return (
                       <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
                         <div className="flex items-center gap-2">
