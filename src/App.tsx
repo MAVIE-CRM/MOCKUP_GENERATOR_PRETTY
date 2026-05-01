@@ -238,7 +238,7 @@ function App() {
       const newColors = { ...assetColors };
       let changed = false;
 
-      for (const [cName, assets] of Object.entries(selectedProduct.components)) {
+      for (const [, assets] of Object.entries(selectedProduct.components)) {
         for (const asset of assets) {
           const colorKey = `${selectedProductId}_${asset.path}`;
           if (!newColors[colorKey]) {
