@@ -25,6 +25,15 @@ interface Product {
   components: Record<string, ComponentAsset[]>;
 }
 
+interface DownloadHistoryItem {
+  id: string;
+  timestamp: number;
+  fileName: string;
+  productName: string;
+  graphicName: string;
+  thumbnail?: string;
+}
+
 const COLOR_MAP: Record<string, string> = {
   'BAB': '#E0FFFF', 'PLS': '#FF69B4', 'ARG': '#C0C0C0', 'AZZ': '#87CEEB',
   'BEI': '#F5F5DC', 'BK': '#1A1A1A', 'BLU': '#0000FF', 'BRW': '#A52A2A',
@@ -61,6 +70,8 @@ function App() {
   const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
   const [floraStatus, setFloraStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -71,7 +82,21 @@ function App() {
       setIsAuthenticated(true);
       fetchData(savedPass);
     }
+    const savedHistory = localStorage.getItem('pretty_history');
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Errore nel caricamento della cronologia:", e);
+      }
+    }
   }, []);
+
+  const saveToHistory = (item: DownloadHistoryItem) => {
+    const newHistory = [item, ...history].slice(0, 50); // Teniamo gli ultimi 50
+    setHistory(newHistory);
+    localStorage.setItem('pretty_history', JSON.stringify(newHistory));
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -518,18 +543,65 @@ function App() {
     }
   };
 
-  const handleRandomize = () => {
-    if (!selectedProduct) return;
+  const handleSmartSwitch = () => {
+    if (!selectedProduct || !selections[selectedProductId]) return;
+    
+    const currentSelections = selections[selectedProductId];
+    const newSelections = { ...currentSelections };
+    let switchedCount = 0;
 
-    const newProductSelections = { ...selections[selectedProductId] };
-    Object.entries(selectedProduct.components).forEach(([cName, assets]) => {
-      newProductSelections[cName] = assets[Math.floor(Math.random() * assets.length)];
+    // 1. Determiniamo la direzione globale
+    let globalTarget: 'LISCIO' | 'AMMACCATO' | null = null;
+    for (const cName of Object.keys(currentSelections)) {
+      const asset = currentSelections[cName];
+      const path = asset.fullPath.toUpperCase();
+      const name = asset.name.toUpperCase();
+      
+      if (path.includes('LISCIO') || name.includes('_L')) {
+        globalTarget = 'AMMACCATO';
+        break;
+      } else if (path.includes('AMM') || name.includes('_A')) {
+        globalTarget = 'LISCIO';
+        break;
+      }
+    }
+
+    if (!globalTarget) return;
+
+    // 2. Applichiamo la direzione
+    Object.keys(currentSelections).forEach(cName => {
+      const asset = currentSelections[cName];
+      const name = asset.name.toUpperCase();
+      const fromSuffix = globalTarget === 'AMMACCATO' ? '_L' : '_A';
+      const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
+      const targetFolder = globalTarget;
+
+      const expectedName = name.replace(fromSuffix, toSuffix);
+      const possibleAssets = selectedProduct.components[cName];
+      if (!possibleAssets) return;
+
+      const target = possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        return aName === expectedName && (aFolder.includes(targetFolder) || aFolder.includes(targetFolder.substring(0, 3)));
+      }) || possibleAssets.find(a => a.name.toUpperCase() === expectedName);
+
+      if (target) {
+        newSelections[cName] = target;
+        switchedCount++;
+      }
     });
 
-    setSelections(prev => ({ ...prev, [selectedProductId]: newProductSelections }));
-    const randomGraphic = graficheList[Math.floor(Math.random() * graficheList.length)];
-    if (randomGraphic) setSelectedGraphic(randomGraphic);
-    setFloraResult(null);
+    if (switchedCount > 0) {
+      setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
+      setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
+      setTimeout(() => setFloraStatus(''), 2000);
+    }
+  };
+
+  const handleSmartFit = () => {
+    handleFloraGenerate();
   };
 
   const handleExport = () => {
@@ -552,8 +624,19 @@ function App() {
 
       const link = document.createElement('a');
       link.download = fileName;
-      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      link.href = dataUrl;
       link.click();
+
+      // Salviamo nella cronologia
+      saveToHistory({
+        id: Math.random().toString(36).substring(7),
+        timestamp: Date.now(),
+        fileName,
+        productName,
+        graphicName,
+        // Non salviamo il dataUrl intero per non saturare il localStorage
+      });
 
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
     }
@@ -904,14 +987,56 @@ function App() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-3 border-l border-black/5 pl-6">
-                <button 
-                  onClick={() => {/* Prossimamente: Logica history */}} 
-                  className="p-3 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 hover:text-black transition-all group"
-                  title="Cronologia Download"
-                >
-                  <History size={18} className="group-active:rotate-[-45deg] transition-transform" />
-                </button>
+              <div className="flex items-center gap-3 border-l border-black/5 pl-6 relative">
+                <div className="relative">
+                  <button 
+                    onClick={() => setIsHistoryOpen(!isHistoryOpen)} 
+                    className={`p-3 rounded-xl transition-all group ${isHistoryOpen ? 'bg-black text-white shadow-lg' : 'bg-black/5 hover:bg-black/10 text-black/40 hover:text-black'}`}
+                    title="Cronologia Download"
+                  >
+                    <History size={18} className={`${isHistoryOpen ? 'rotate-[-45deg]' : ''} transition-transform`} />
+                  </button>
+
+                  <AnimatePresence>
+                    {isHistoryOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute right-0 mt-3 w-80 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/[0.03] overflow-hidden z-[100]"
+                      >
+                        <div className="p-5 border-b border-black/[0.03] flex items-center justify-between bg-gray-50/50">
+                          <h3 className="text-[10px] font-black uppercase tracking-widest text-black/40">Cronologia Export</h3>
+                          <button onClick={() => setHistory([])} className="text-[8px] font-bold text-red-500 hover:underline uppercase">Pulisci</button>
+                        </div>
+                        <div className="max-h-[400px] overflow-y-auto custom-scrollbar">
+                          {history.length === 0 ? (
+                            <div className="p-10 text-center">
+                              <History size={24} className="mx-auto mb-2 text-black/5" />
+                              <p className="text-[9px] font-bold text-black/20 uppercase">Nessun export recente</p>
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-black/[0.03]">
+                              {history.map((item) => (
+                                <div key={item.id} className="p-4 hover:bg-gray-50 transition-all group">
+                                  <div className="flex items-start justify-between mb-1">
+                                    <p className="text-[10px] font-black uppercase truncate max-w-[180px]">{item.fileName}</p>
+                                    <span className="text-[8px] font-bold text-black/20">{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[8px] font-bold text-indigo-500 bg-indigo-500/10 px-1.5 py-0.5 rounded uppercase">{item.productName}</span>
+                                    <span className="text-[8px] font-bold text-black/30 truncate">{item.graphicName}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <button 
                   onClick={handleExport} 
                   disabled={isExporting || !selectedGraphic} 
