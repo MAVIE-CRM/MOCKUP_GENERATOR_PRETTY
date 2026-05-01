@@ -280,13 +280,6 @@ function App() {
     
     return { backgroundColor: '#334155', color: '#fff' };
   };
-      'GRI': '#808080', 'GRIGIO': '#808080',
-      'WH': '#FFFFFF', 'WHITE': '#FFFFFF', 'BIANCO': '#FFFFFF',
-      'YW': '#FFFF00', 'YELLOW': '#FFFF00', 'GIALLO': '#FFFF00'
-    };
-    const fallbackColor = EXTENDED_MAP[label] || EXTENDED_MAP[label.split(' ')[0]] || '#333';
-    return { backgroundColor: fallbackColor, color: '#fff' };
-  };
 
   const handleSelection = (componentName: string, asset: ComponentAsset) => {
     setSelections(prev => ({
