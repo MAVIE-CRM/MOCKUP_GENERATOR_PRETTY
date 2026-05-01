@@ -502,6 +502,7 @@ function App() {
       const parts = name.replace(/\..+$/, '').split('_');
       const colorCode = parts[1]; // Es. NERO
       const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
+      const toKey = globalTarget === 'AMMACCATO' ? 'AMM' : 'LISC';
       
       const currentPath = asset.folder.toUpperCase();
       const pathParts = currentPath.split(/[/\\]/).filter(p => p);
@@ -511,15 +512,20 @@ function App() {
       if (!possibleAssets || !colorCode) return;
 
       // Cerchiamo l'asset gemello:
-      // 1. Priorità: Stesso Colore + Stesso Sottocartella (es. METAL) + Suffisso Opposto
-      // 2. Fallback: Stesso Colore + Suffisso Opposto
+      // 1. Priorità: Stesso Colore + Radice Cartella Target + Stessa Sottocartella (es. METAL) + Suffisso Opposto
+      // 2. Fallback: Stesso Colore + Radice Cartella Target + Suffisso Opposto
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aFolder = a.folder.toUpperCase();
         const hasColor = aName.includes(colorCode);
         const hasSuffix = aName.includes(toSuffix);
+        const hasKey = aFolder.includes(toKey);
         const sameSub = currentSubFolder ? aFolder.includes(currentSubFolder) : true;
-        return hasColor && hasSuffix && sameSub;
+        return hasColor && hasSuffix && hasKey && sameSub;
+      }) || possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        return aName.includes(colorCode) && aName.includes(toSuffix) && aFolder.includes(toKey);
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         return aName.includes(colorCode) && aName.includes(toSuffix);
@@ -832,43 +838,53 @@ function App() {
               }
 
               // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
+              // Usiamo le radici per essere flessibili (es. LISCII, AMMACCATI)
               const categories = Array.from(new Set(assets.map(a => {
                 const f = (a.folder || '').toUpperCase();
-                if (f.includes('LISCIO')) return 'LISCIO';
-                if (f.includes('AMMACCATO')) return 'AMMACCATO';
+                if (f.includes('LISC')) return 'LISCIO';
+                if (f.includes('AMM')) return 'AMMACCATO';
                 return null;
               }))).filter((c): c is string => typeof c === 'string').sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
-              let currentCategory: string = sFolder.includes('LISCIO') ? 'LISCIO' : (sFolder.includes('AMMACCATO') ? 'AMMACCATO' : (categories[0] || ''));
+              let currentCategory: string = sFolder.includes('LISC') ? 'LISCIO' : (sFolder.includes('AMM') ? 'AMMACCATO' : (categories[0] || ''));
               
-              const masterAssets = assets.filter(a => (a.folder || '').toUpperCase().includes(currentCategory));
+              const masterAssets = assets.filter(a => {
+                const f = (a.folder || '').toUpperCase();
+                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
+                return f.includes(targetKey);
+              });
 
               // Asset Standard: sono quelli che non sono in una sottocartella ulteriore (es. LISCIO/METAL)
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
                 const f = (a.folder || '').toUpperCase();
                 const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                const masterIdx = parts.indexOf(currentCategory);
+                // Troviamo dove si trova la radice (LISC o AMM)
+                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
+                const masterIdx = parts.findIndex(p => p.includes(targetKey));
                 return masterIdx === parts.length - 1;
               }));
 
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
                 const f = (a.folder || '').toUpperCase();
                 const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                const masterIdx = parts.indexOf(currentCategory);
+                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
+                const masterIdx = parts.findIndex(p => p.includes(targetKey));
                 return masterIdx !== -1 && masterIdx < parts.length - 1;
               }).map(a => {
                 const f = (a.folder || '').toUpperCase();
                 const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                const masterIdx = parts.indexOf(currentCategory);
+                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
+                const masterIdx = parts.findIndex(p => p.includes(targetKey));
                 return parts[masterIdx + 1];
               }))).filter((s): s is string => typeof s === 'string').sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
-                const target = (currentColor && assets.find(a => (a.folder || '').toUpperCase().includes(cat) && a.name.toUpperCase().includes(currentColor))) ||
-                               assets.find(a => (a.folder || '').toUpperCase().includes(cat));
+                const targetKey = cat === 'LISCIO' ? 'LISC' : 'AMM';
+                const target = (currentColor && assets.find(a => (a.folder || '').toUpperCase().includes(targetKey) && a.name.toUpperCase().includes(currentColor))) ||
+                               assets.find(a => (a.folder || '').toUpperCase().includes(targetKey));
                 if (target) handleSelection(cName, target);
               };
 
