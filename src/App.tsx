@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, ShieldCheck, ArrowRight } from 'lucide-react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, ShieldCheck, ArrowRight, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -904,10 +904,21 @@ function App() {
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 border-l border-black/5 pl-4">
-                <button onClick={handleRandomize} className="p-2.5 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 transition-all"><RefreshCcw size={16} /></button>
-                <button onClick={handleExport} disabled={isExporting || !selectedGraphic} className="px-5 py-2.5 text-[9px] rounded-xl bg-black text-white font-black uppercase tracking-[0.1em] flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-xl">
-                  <Download size={16} /> Export
+              <div className="flex items-center gap-3 border-l border-black/5 pl-6">
+                <button 
+                  onClick={() => {/* Prossimamente: Logica history */}} 
+                  className="p-3 rounded-xl bg-black/5 hover:bg-black/10 text-black/40 hover:text-black transition-all group"
+                  title="Cronologia Download"
+                >
+                  <History size={18} className="group-active:rotate-[-45deg] transition-transform" />
+                </button>
+                <button 
+                  onClick={handleExport} 
+                  disabled={isExporting || !selectedGraphic} 
+                  className="px-8 py-3 text-[10px] rounded-xl bg-black text-white font-black uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-black/20 disabled:opacity-30 disabled:grayscale disabled:hover:scale-100"
+                >
+                  <Download size={18} /> 
+                  <span className="hidden sm:inline">Export Design</span>
                 </button>
               </div>
             </div>
