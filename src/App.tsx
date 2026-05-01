@@ -837,35 +837,33 @@ function App() {
                 if (f.includes('LISCIO')) return 'LISCIO';
                 if (f.includes('AMMACCATO')) return 'AMMACCATO';
                 return null;
-              }))).filter(c => c).sort();
+              }))).filter((c): c is string => c !== null).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
-              let currentCategory = sFolder.includes('LISCIO') ? 'LISCIO' : (sFolder.includes('AMMACCATO') ? 'AMMACCATO' : categories[0]);
+              let currentCategory: string = sFolder.includes('LISCIO') ? 'LISCIO' : (sFolder.includes('AMMACCATO') ? 'AMMACCATO' : (categories[0] || ''));
               
               const masterAssets = assets.filter(a => (a.folder || '').toUpperCase().includes(currentCategory));
 
               // Asset Standard: sono quelli che non sono in una sottocartella ulteriore (es. LISCIO/METAL)
-              // Cerchiamo di capire se c'è un livello extra oltre a LISCIO/AMMACCATO
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
                 const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
-                // Se dopo LISCIO non c'è altro, è standard
+                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 const masterIdx = parts.indexOf(currentCategory);
                 return masterIdx === parts.length - 1;
               }));
 
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
                 const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
+                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 const masterIdx = parts.indexOf(currentCategory);
                 return masterIdx !== -1 && masterIdx < parts.length - 1;
               }).map(a => {
                 const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
+                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 const masterIdx = parts.indexOf(currentCategory);
                 return parts[masterIdx + 1];
-              }))).filter(s => s).sort();
+              }))).filter((s): s is string => s !== undefined && s !== null).sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
@@ -878,7 +876,7 @@ function App() {
                 <section key={cName} className="space-y-4">
                   <div className="flex items-center gap-2">
                     <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                    {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
+                    {currentCategory && (currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
                       <button 
                         onClick={handleSmartSwitch}
                         className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
@@ -916,7 +914,6 @@ function App() {
 
                   {subFolders.map(sub => {
                     const subAssets = getUniqueAssets(masterAssets.filter(a => (a.folder || '').toUpperCase().includes(sub)));
-                    if (subAssets.length === 0) return null;
                     if (subAssets.length === 0) return null;
                     return (
                       <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
