@@ -502,15 +502,28 @@ function App() {
       const parts = name.replace(/\..+$/, '').split('_');
       const colorCode = parts[1]; // Es. NERO
       const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
+      
+      const currentPath = asset.folder.toUpperCase();
+      const pathParts = currentPath.split(/[/\\]/).filter(p => p);
+      const currentSubFolder = pathParts.length > 1 ? pathParts[1] : null;
 
       const possibleAssets = selectedProduct.components[cName];
       if (!possibleAssets || !colorCode) return;
 
-      // Cerchiamo l'asset gemello che abbia lo stesso codice colore e il suffisso opposto
+      // Cerchiamo l'asset gemello:
+      // 1. Priorità: Stesso Colore + Stesso Sottocartella (es. METAL) + Suffisso Opposto
+      // 2. Fallback: Stesso Colore + Suffisso Opposto
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
+        const aFolder = a.folder.toUpperCase();
+        const hasColor = aName.includes(colorCode);
+        const hasSuffix = aName.includes(toSuffix);
+        const sameSub = currentSubFolder ? aFolder.includes(currentSubFolder) : true;
+        return hasColor && hasSuffix && sameSub;
+      }) || possibleAssets.find(a => {
+        const aName = a.name.toUpperCase();
         return aName.includes(colorCode) && aName.includes(toSuffix);
-      }) || possibleAssets.find(a => a.name.toUpperCase().includes(colorCode));
+      });
 
       if (target) {
         newSelections[cName] = target;
