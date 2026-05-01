@@ -283,39 +283,47 @@ function App() {
     // Se abbiamo NERO -> il colore è NERO (indice 0)
     const parts = name.replace(/\..+$/, '').split('_');
     const colorCode = parts.length >= 2 ? parts[1] : parts[0];
-    
     const EXTENDED_MAP: Record<string, string> = {
       ...COLOR_MAP,
-      'BK': '#000000', 'BLACK': '#000000', 'NERO': '#000000',
-      'RED': '#FF0000', 'ROSSO': '#FF0000',
-      'PNK': '#FFB6C1', 'PINK': '#FFB6C1', 'ROSA': '#FFB6C1',
-      'BEI': '#F5F5DC', 'BEIGE': '#F5F5DC',
-      'BLU': '#0000FF', 'BLUE': '#0000FF',
-      'AZZ': '#87CEEB', 'AZZURRO': '#87CEEB',
-      'VER': '#22c55e', 'VERDE': '#22c55e',
-      'YW': '#eab308', 'YELLOW': '#eab308', 'GIALLO': '#eab308',
-      'WH': '#ffffff', 'WHITE': '#ffffff', 'BIANCO': '#ffffff',
-      'ARG': '#94a3b8', 'SILVER': '#94a3b8', 'ARGENTO': '#94a3b8',
-      'ORO': '#d4af37', 'GOLD': '#d4af37',
-      'VIO': '#a855f7', 'VIOLA': '#a855f7',
-      'ARA': '#f97316', 'ARANCIO': '#f97316',
-      'MIN': '#1e293b', // Esempio per MIN (Midnight?)
+      'BK': '#1A1A1A', 'BLACK': '#1A1A1A', 'NERO': '#1A1A1A',
+      'RED': '#EF4444', 'ROSSO': '#EF4444', 'ROS': '#EF4444',
+      'PNK': '#F472B6', 'PINK': '#F472B6', 'ROSA': '#F472B6',
+      'BEI': '#D6D3D1', 'BEIGE': '#D6D3D1',
+      'BLU': '#1D4ED8', 'BLUE': '#1D4ED8',
+      'AZZ': '#60A5FA', 'AZZURRO': '#60A5FA',
+      'VER': '#22C55E', 'VERDE': '#22C55E',
+      'YW': '#EAB308', 'YELLOW': '#EAB308', 'GIALLO': '#EAB308', 'GIA': '#EAB308',
+      'WH': '#FFFFFF', 'WHITE': '#FFFFFF', 'BIANCO': '#FFFFFF', 'BIA': '#FFFFFF',
+      'ARG': '#94A3B8', 'SILVER': '#94A3B8', 'ARGENTO': '#94A3B8',
+      'ORO': '#D4AF37', 'GOLD': '#D4AF37', 'ORA': '#D4AF37',
+      'VIO': '#A855F7', 'VIOLA': '#A855F7',
+      'COB': '#0047AB', 'ROY': '#4169E1', 'TIF': '#0ABAB5',
+      'BOR': '#800020', 'CIL': '#D21F3C', 'GRA': '#4A4A4A', 'GRI': '#808080',
+      'LIL': '#C8A2C8', 'MAG': '#C0007A', 'MAL': '#E0B0FF', 'MAN': '#FF8C00',
+      'MEN': '#98FB98', 'NAV': '#000080', 'OLI': '#808000', 'OTT': '#008080',
+      'POL': '#B0C4DE', 'RUG': '#A0522D', 'SAB': '#F4A460', 'SAL': '#FA8072',
+      'BAB': '#F0E68C', 'CYT': '#E4D00A', 'ARA': '#F97316', 'MAR': '#451A03',
+      'FRA': '#E11D48', 'NAP': '#000080'
     };
 
+    // 1. Cerchiamo nella mappa usando il codice dal nome (es. STICK_VIOLA_L -> VIOLA)
+    // 2. Cerchiamo nella mappa usando l'etichetta (es. COB)
+    // 3. Fallback sull'analisi dei pixel
     const bgColor = EXTENDED_MAP[colorCode] || EXTENDED_MAP[label] || assetColors[`${selectedProductId}_${asset.path}`];
     
     if (bgColor) {
-      const match = bgColor.match(/\d+/g);
-      let r, g, b;
-      if (match && bgColor.startsWith('rgb')) {
-        [r, g, b] = match.map(Number);
-      } else {
-        // Hex to RGB simple check
+      // Calcolo contrasto testo (bianco o nero)
+      let r = 0, g = 0, b = 0;
+      if (bgColor.startsWith('#')) {
         const hex = bgColor.replace('#', '');
-        r = parseInt(hex.substring(0, 2), 16) || 255;
-        g = parseInt(hex.substring(2, 4), 16) || 255;
-        b = parseInt(hex.substring(4, 6), 16) || 255;
+        r = parseInt(hex.substring(0, 2), 16) || 0;
+        g = parseInt(hex.substring(2, 4), 16) || 0;
+        b = parseInt(hex.substring(4, 6), 16) || 0;
+      } else if (bgColor.startsWith('rgb')) {
+        const match = bgColor.match(/\d+/g);
+        if (match) [r, g, b] = match.map(Number);
       }
+      
       const brightness = (r * 299 + g * 587 + b * 114) / 1000;
       return { 
         backgroundColor: bgColor, 
