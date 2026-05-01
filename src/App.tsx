@@ -68,6 +68,12 @@ function App() {
 
   const [graficheList, setGraficheList] = useState<GraphicAsset[]>([]);
   const [selectedGraphic, setSelectedGraphic] = useState<GraphicAsset | null>(null);
+  
+  // STATO PER EMULAZIONE GLOBALE (MASTER CONFIG)
+  const [masterConfig, setMasterConfig] = useState<{
+    colorCode: string | null;
+    isAmmaccato: boolean;
+  }>({ colorCode: null, isAmmaccato: false });
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
@@ -177,6 +183,39 @@ function App() {
     }
   };
 
+
+  // EFFETTO DI EMULAZIONE AUTOMATICA AL CAMBIO PRODOTTO
+  useEffect(() => {
+    if (!selectedProduct || !masterConfig.colorCode) return;
+
+    const currentSelections = selections[selectedProductId] || {};
+    const newSelections = { ...currentSelections };
+    let emulationCount = 0;
+
+    Object.entries(selectedProduct.components).forEach(([cName, assets]) => {
+      // Cerchiamo un asset che corrisponda al colore e allo stato liscio/ammaccato
+      const targetSuffix = masterConfig.isAmmaccato ? '_A' : '_L';
+      
+      const match = assets.find(a => {
+        const aName = a.name.toUpperCase();
+        return aName.includes(masterConfig.colorCode!) && aName.includes(targetSuffix);
+      }) || assets.find(a => {
+        const aName = a.name.toUpperCase();
+        return aName.includes(masterConfig.colorCode!);
+      });
+
+      if (match && (!currentSelections[cName] || currentSelections[cName].path !== match.path)) {
+        newSelections[cName] = match;
+        emulationCount++;
+      }
+    });
+
+    if (emulationCount > 0) {
+      setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
+      setFloraStatus(`Emulazione Style: ${masterConfig.colorCode} ✨`);
+      setTimeout(() => setFloraStatus(''), 2000);
+    }
+  }, [selectedProductId]);
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
@@ -327,6 +366,7 @@ function App() {
   };
 
   const handleSelection = (componentName: string, asset: ComponentAsset) => {
+    // Aggiorniamo la selezione locale
     setSelections(prev => ({
       ...prev,
       [selectedProductId]: {
@@ -334,6 +374,16 @@ function App() {
         [componentName]: asset
       }
     }));
+
+    // AGGIORNIAMO LA MASTER CONFIG PER EMULAZIONE
+    // Estraiamo il colore e il tipo di superficie dall'asset selezionato
+    const name = asset.name.toUpperCase();
+    const parts = name.replace(/\..+$/, '').split(/[_\s-]/);
+    const colorCode = parts.length >= 2 ? parts[1].toUpperCase() : parts[0].toUpperCase();
+    const isAmmaccato = name.includes('_A') || asset.fullPath.toUpperCase().includes('AMM');
+
+    setMasterConfig({ colorCode, isAmmaccato });
+    console.log(`Master Style Updated: ${colorCode} (${isAmmaccato ? 'Ammaccato' : 'Liscio'})`);
   };
 
 
