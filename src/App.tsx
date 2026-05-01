@@ -837,7 +837,7 @@ function App() {
                 if (f.includes('LISCIO')) return 'LISCIO';
                 if (f.includes('AMMACCATO')) return 'AMMACCATO';
                 return null;
-              }))).filter((c): c is string => c !== null).sort();
+              }))).filter((c): c is string => typeof c === 'string').sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
@@ -863,7 +863,7 @@ function App() {
                 const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 const masterIdx = parts.indexOf(currentCategory);
                 return parts[masterIdx + 1];
-              }))).filter((s): s is string => s !== undefined && s !== null).sort();
+              }))).filter((s): s is string => typeof s === 'string').sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
