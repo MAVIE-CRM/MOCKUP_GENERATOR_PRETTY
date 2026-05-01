@@ -802,47 +802,75 @@ function App() {
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               if (!assets || assets.length === 0) return null;
 
-              // 1. MASTER CATEGORIES (LISCIO, AMMACCATO)
+              // Determiniamo se il componente usa la logica LISCIO/AMMACCATO
+              const hasMasterFolders = assets.some(a => {
+                const f = (a.folder || '').toUpperCase();
+                return f.includes('LISCIO') || f.includes('AMMACCATO');
+              });
+
+              if (!hasMasterFolders) {
+                // Caso semplice: Mostriamo tutto in una lista unica (es. STICK, MINI)
+                const allUnique = getUniqueAssets(assets);
+                return (
+                  <section key={cName} className="space-y-4">
+                    <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
+                    <div className="flex flex-wrap gap-2">
+                      {allUnique.map((asset) => (
+                        <button
+                          key={asset.path}
+                          onClick={() => handleSelection(cName, asset)}
+                          style={getAssetStyle(asset)}
+                          title={formatLabel(asset.name)}
+                          className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                        >
+                          {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                );
+              }
+
+              // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
               const categories = Array.from(new Set(assets.map(a => {
-                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return parts[0]?.toUpperCase();
+                const f = (a.folder || '').toUpperCase();
+                if (f.includes('LISCIO')) return 'LISCIO';
+                if (f.includes('AMMACCATO')) return 'AMMACCATO';
+                return null;
               }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
-              const sParts = (selectedAsset?.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-              let currentCategory = sParts[0]?.toUpperCase() || categories[0] || '';
+              const sFolder = (selectedAsset?.folder || '').toUpperCase();
+              let currentCategory = sFolder.includes('LISCIO') ? 'LISCIO' : (sFolder.includes('AMMACCATO') ? 'AMMACCATO' : categories[0]);
               
-              // 2. FILTRO ASSETS PER CATEGORIA
-              const masterAssets = assets.filter(a => {
-                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return parts[0]?.toUpperCase() === currentCategory;
-              });
+              const masterAssets = assets.filter(a => (a.folder || '').toUpperCase().includes(currentCategory));
 
-              // 3. ASSET STANDARD
+              // Asset Standard: sono quelli che non sono in una sottocartella ulteriore (es. LISCIO/METAL)
+              // Cerchiamo di capire se c'è un livello extra oltre a LISCIO/AMMACCATO
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return parts.length === 1; 
+                const f = (a.folder || '').toUpperCase();
+                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
+                // Se dopo LISCIO non c'è altro, è standard
+                const masterIdx = parts.indexOf(currentCategory);
+                return masterIdx === parts.length - 1;
               }));
 
-              // 4. SOTTO-SEZIONI
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
-                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return parts.length > 1;
+                const f = (a.folder || '').toUpperCase();
+                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
+                const masterIdx = parts.indexOf(currentCategory);
+                return masterIdx !== -1 && masterIdx < parts.length - 1;
               }).map(a => {
-                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return parts[1]?.toUpperCase();
+                const f = (a.folder || '').toUpperCase();
+                const parts = f.split(/[/\\]/).filter(p => p && p !== cName.toUpperCase());
+                const masterIdx = parts.indexOf(currentCategory);
+                return parts[masterIdx + 1];
               }))).filter(s => s).sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
-                const target = (currentColor && assets.find(a => {
-                  const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
-                  return p[0]?.toUpperCase() === cat && a.name.toUpperCase().includes(currentColor);
-                })) || assets.find(a => {
-                  const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
-                  return p[0]?.toUpperCase() === cat;
-                });
-                
+                const target = (currentColor && assets.find(a => (a.folder || '').toUpperCase().includes(cat) && a.name.toUpperCase().includes(currentColor))) ||
+                               assets.find(a => (a.folder || '').toUpperCase().includes(cat));
                 if (target) handleSelection(cName, target);
               };
 
@@ -850,7 +878,7 @@ function App() {
                 <section key={cName} className="space-y-4">
                   <div className="flex items-center gap-2">
                     <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                    {currentCategory && (currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
+                    {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
                       <button 
                         onClick={handleSmartSwitch}
                         className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
@@ -860,19 +888,17 @@ function App() {
                     )}
                   </div>
 
-                  {categories.length > 1 && (
-                    <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
-                      {categories.map(cat => (
-                        <button 
-                          key={cat} 
-                          onClick={() => switchCategory(cat)} 
-                          className={`flex-1 py-1.5 px-2 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all ${currentCategory === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
-                        >
-                          {cat}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
+                    {categories.map(cat => (
+                      <button 
+                        key={cat} 
+                        onClick={() => switchCategory(cat)} 
+                        className={`flex-1 py-1.5 px-2 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all ${currentCategory === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
 
                   <div className="flex flex-wrap gap-2">
                     {standardAssets.map((asset) => (
@@ -889,10 +915,8 @@ function App() {
                   </div>
 
                   {subFolders.map(sub => {
-                    const subAssets = getUniqueAssets(masterAssets.filter(a => {
-                      const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
-                      return p[1]?.toUpperCase() === sub;
-                    }));
+                    const subAssets = getUniqueAssets(masterAssets.filter(a => (a.folder || '').toUpperCase().includes(sub)));
+                    if (subAssets.length === 0) return null;
                     if (subAssets.length === 0) return null;
                     return (
                       <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
