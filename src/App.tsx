@@ -499,19 +499,18 @@ function App() {
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
       const name = asset.name.toUpperCase();
-      const fromSuffix = globalTarget === 'AMMACCATO' ? '_L' : '_A';
+      const parts = name.replace(/\..+$/, '').split('_');
+      const colorCode = parts[1]; // Es. NERO
       const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
-      const targetFolder = globalTarget;
 
-      const expectedName = name.replace(fromSuffix, toSuffix);
       const possibleAssets = selectedProduct.components[cName];
-      if (!possibleAssets) return;
+      if (!possibleAssets || !colorCode) return;
 
+      // Cerchiamo l'asset gemello che abbia lo stesso codice colore e il suffisso opposto
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        return aName === expectedName && (aFolder.includes(targetFolder) || aFolder.includes(targetFolder.substring(0, 3)));
-      }) || possibleAssets.find(a => a.name.toUpperCase() === expectedName);
+        return aName.includes(colorCode) && aName.includes(toSuffix);
+      }) || possibleAssets.find(a => a.name.toUpperCase().includes(colorCode));
 
       if (target) {
         newSelections[cName] = target;
@@ -531,40 +530,57 @@ function App() {
     if (!selectedProduct || !selectedGraphic) return;
     
     setSmartFitStatus('Analisi Bounding Box...');
+    console.log("Smart Fit: Avvio analisi per", selectedProduct.name);
+
     try {
-      // 1. Troviamo l'asset del corpo principale
+      // 1. Troviamo l'asset del corpo principale (più flessibile)
       const mainCompName = Object.keys(selectedProduct.components).find(c => {
         const n = c.toUpperCase();
         return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
                n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
-               n.includes('LAMPADA') || n.includes('STRUTTURA');
+               n.includes('LAMPADA') || n.includes('STRUTTURA') || n.includes('BODY') ||
+               n.includes('BASE');
       }) || Object.keys(selectedProduct.components)[0];
 
       const asset = selections[selectedProductId]?.[mainCompName];
-      if (!asset) return;
+      if (!asset) {
+        console.warn("Smart Fit: Nessun asset selezionato per il componente principale");
+        setSmartFitStatus('Errore: Seleziona Prodotto');
+        setTimeout(() => setSmartFitStatus(''), 2000);
+        return;
+      }
+
+      console.log("Smart Fit: Analizzando asset", asset.name);
 
       const img = new Image();
       img.crossOrigin = "anonymous";
       let baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
       img.src = baseUrl;
       
-      await new Promise((resolve) => { img.onload = resolve; });
+      // Timeout di 5 secondi per il caricamento
+      const loadPromise = new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error("Errore caricamento immagine"));
+        setTimeout(() => reject(new Error("Timeout caricamento")), 5000);
+      });
+
+      await loadPromise;
 
       const canvas = document.createElement('canvas');
-      canvas.width = 400; // Analisi a bassa risoluzione per velocità
+      canvas.width = 400;
       canvas.height = 500;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error("Canvas context non creato");
 
       ctx.drawImage(img, 0, 0, 400, 500);
-      const data = ctx.getImageData(0, 0, 400, 500).data;
+      const imageData = ctx.getImageData(0, 0, 400, 500).data;
 
-      // Analizziamo la larghezza di ogni riga per trovare il "corpo solido"
+      // Analizziamo la larghezza di ogni riga
       let rowWidths = [];
       for (let y = 0; y < 500; y++) {
         let first = -1, last = -1;
         for (let x = 0; x < 400; x++) {
-          if (data[(y * 400 + x) * 4 + 3] > 20) {
+          if (imageData[(y * 400 + x) * 4 + 3] > 20) {
             if (first === -1) first = x;
             last = x;
           }
@@ -572,20 +588,18 @@ function App() {
         rowWidths[y] = first === -1 ? 0 : last - first;
       }
 
-      // Troviamo la riga più larga (il diametro del barattolo)
       const maxWidth = Math.max(...rowWidths);
-      
-      // Il "corpo" inizia quando la riga è almeno il 70% della larghezza massima
-      // (questo esclude i bastoncini che sono molto più stretti del barattolo)
+      if (maxWidth === 0) throw new Error("Immagine vuota rilevata");
+
       let bodyTop = 0, bodyBottom = 499;
       for (let y = 0; y < 500; y++) {
-        if (rowWidths[y] > maxWidth * 0.7) {
+        if (rowWidths[y] > maxWidth * 0.6) {
           bodyTop = y;
           break;
         }
       }
       for (let y = 499; y >= 0; y--) {
-        if (rowWidths[y] > 5) { // Fine del prodotto alla base
+        if (rowWidths[y] > 5) {
           bodyBottom = y;
           break;
         }
@@ -593,24 +607,22 @@ function App() {
 
       const bodyHeight = bodyBottom - bodyTop;
       const centerY = bodyTop + (bodyHeight / 2);
-
-      // Calcoliamo scala e posizione
-      // Mappiamo i 500px del canvas ai 1250px reali del mockup (fattore 2.5)
-      const realCenterY = centerY * 2.5;
-      const targetY = Math.round((realCenterY - 625) / 5); // Offset relativo al centro (625)
       
-      // La scala si basa sulla larghezza del corpo
-      const targetScale = Math.round((maxWidth / 400) * 110); 
+      const realCenterY = centerY * 2.5;
+      const targetY = Math.round((realCenterY - 625) / 5);
+      const targetScale = Math.round((maxWidth / 400) * 115); 
 
       setGraphicScale(targetScale);
       setGraphicY(targetY);
-      setGraphicX(0); // Centrato orizzontalmente di default
+      setGraphicX(0);
 
-      setSmartFitStatus('Corpo Rilevato! ✨');
+      setSmartFitStatus('Fitting Completato! ✨');
+      console.log("Smart Fit: Successo!", { targetScale, targetY });
       setTimeout(() => setSmartFitStatus(''), 2000);
-    } catch (err) {
-      setSmartFitStatus('Errore Smart Fit');
-      setTimeout(() => setSmartFitStatus(''), 2000);
+    } catch (err: any) {
+      console.error("Smart Fit Error:", err.message);
+      setSmartFitStatus(err.message.includes('CORS') ? 'Errore Sicurezza (CORS)' : 'Errore Analisi');
+      setTimeout(() => setSmartFitStatus(''), 3000);
     }
   };
 
@@ -775,12 +787,9 @@ function App() {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
-              // 1. Identifichiamo le categorie "Master" (es. LISCIO, AMMACCATO)
-              // Ignoriamo le sottocartelle come METAL nel selettore principale
+              // 1. Categorie Master per i pulsanti (LISCIO, AMMACCATO)
               const categories = Array.from(new Set(assets.map(a => {
                 const parts = a.folder.split(/[/\\]/);
-                // La categoria master è la prima cartella dopo il nome del componente
-                // O l'ultima se non ci sono sottocartelle
                 return parts[0].toUpperCase();
               }))).filter(c => c).sort();
 
@@ -788,39 +797,44 @@ function App() {
               const sParts = selectedAsset?.folder.split(/[/\\]/) || [];
               let currentCategory = sParts[0]?.toUpperCase() || categories[0];
               
-              // 2. Filtriamo tutti gli asset che appartengono a questa categoria master (incluse sottocartelle)
+              // 2. Assets della categoria selezionata
               const masterAssets = assets.filter(a => a.folder.toUpperCase().startsWith(currentCategory));
 
-              // 3. Dividiamo tra asset "Standard" (nella cartella base) e "Sub-Sections" (nelle sottocartelle)
+              // 3. Asset Standard vs Sub-Sections (es. METAL)
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const parts = a.folder.split(/[/\\]/);
-                return parts.length === 1; // È direttamente nella cartella master
+                const f = a.folder.toUpperCase();
+                // È standard se è proprio nella cartella master (es. "LISCIO")
+                // e non in una sottocartella (es. "LISCIO/METAL")
+                const parts = f.split(/[/\\]/);
+                return parts.length === 1 || (parts.length === 2 && parts[1] === '');
               }));
 
-              // Troviamo tutte le sottocartelle uniche (es. METAL, SPECIAL, ecc.)
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
                 const parts = a.folder.split(/[/\\]/);
-                return parts.length > 1;
+                return parts.length > 1 && parts[1] !== '';
               }).map(a => a.folder.split(/[/\\]/)[1].toUpperCase()))).sort();
 
               const switchCategory = (cat: string) => {
-                const target = assets.find(a => a.folder.toUpperCase().startsWith(cat));
+                // Cerchiamo di mantenere lo stesso colore se possibile
+                const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
+                const target = (currentColor && assets.find(a => a.folder.toUpperCase().startsWith(cat) && a.name.toUpperCase().includes(currentColor))) ||
+                               assets.find(a => a.folder.toUpperCase().startsWith(cat));
                 if (target) handleSelection(cName, target);
               };
 
               return (
                 <section key={cName} className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                      {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
-                        <button 
-                          onClick={handleSmartSwitch}
-                          className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
-                        >
-                          Switch {currentCategory.includes('LISCIO') ? 'Amm' : 'Liscio'}
-                        </button>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
+                    {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
+                      <button 
+                        onClick={handleSmartSwitch}
+                        className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
+                      >
+                        Switch {currentCategory.includes('LISCIO') ? 'Amm' : 'Liscio'}
+                      </button>
+                    )}
+                  </div>
 
                   {categories.length > 1 && (
                     <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
@@ -836,28 +850,20 @@ function App() {
                     </div>
                   )}
 
-                  {/* ASSET STANDARD */}
                   <div className="flex flex-wrap gap-2">
-                    {standardAssets.map((asset) => {
-                      const name = asset.name.toUpperCase();
-                      const parts = name.replace(/\..+$/, '').split('_');
-                      const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
-                      
-                      return (
-                        <button
-                          key={asset.path}
-                          onClick={() => handleSelection(cName, asset)}
-                          style={getAssetStyle(asset)}
-                          title={formatLabel(asset.name)}
-                          className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                        >
-                          {displayLabel}
-                        </button>
-                      );
-                    })}
+                    {standardAssets.map((asset) => (
+                      <button
+                        key={asset.path}
+                        onClick={() => handleSelection(cName, asset)}
+                        style={getAssetStyle(asset)}
+                        title={formatLabel(asset.name)}
+                        className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                      >
+                        {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
+                      </button>
+                    ))}
                   </div>
 
-                  {/* SOTTO-SEZIONI DINAMICHE (METAL, ETC.) */}
                   {subFolders.map(sub => {
                     const subAssets = getUniqueAssets(masterAssets.filter(a => a.folder.toUpperCase().includes(sub)));
                     return (
@@ -868,23 +874,17 @@ function App() {
                           <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {subAssets.map((asset) => {
-                            const name = asset.name.toUpperCase();
-                            const parts = name.replace(/\..+$/, '').split('_');
-                            const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
-
-                            return (
-                              <button
-                                key={asset.path}
-                                onClick={() => handleSelection(cName, asset)}
-                                style={getAssetStyle(asset)}
-                                title={formatLabel(asset.name)}
-                                className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                              >
-                                {displayLabel}
-                              </button>
-                            );
-                          })}
+                          {subAssets.map((asset) => (
+                            <button
+                              key={asset.path}
+                              onClick={() => handleSelection(cName, asset)}
+                              style={getAssetStyle(asset)}
+                              title={formatLabel(asset.name)}
+                              className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                            >
+                              {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     );
