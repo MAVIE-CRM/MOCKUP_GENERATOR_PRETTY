@@ -235,40 +235,45 @@ function App() {
         ctx.drawImage(img, 0, 0);
         
         const name = fileName.toUpperCase();
-        let sampleX = img.width * 0.5;
-        let sampleY = img.height * 0.5;
+        let sampleX = Math.floor(img.width * 0.5);
+        let sampleY = Math.floor(img.height * 0.75);
 
-        // LOGICA DI CAMPIONAMENTO AUTOMATICA (75% ALTEZZA)
-        // Puntiamo al 75% dell'altezza (corpo basso del prodotto) per il colore più saturo
-        sampleY = img.height * 0.75;
-
-        // Casi particolari se necessario
+        // Casi particolari
         if (name.includes('STICK')) {
-          sampleY = img.height * 0.5;
+          sampleY = Math.floor(img.height * 0.5);
         }
 
-        // Prendiamo una piccola media (5x5 pixel) intorno al punto per evitare "rumore"
-        const size = 5;
-        const data = ctx.getImageData(sampleX - 2, sampleY - 2, size, size).data;
-        
-        let r = 0, g = 0, b = 0, count = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          if (data[i+3] > 150) { // Consideriamo anche pixel parzialmente trasparenti
-            r += data[i];
-            g += data[i+1];
-            b += data[i+2];
-            count++;
+        const getPixelColor = (x: number, y: number) => {
+          const data = ctx.getImageData(x, y, 1, 1).data;
+          if (data[3] > 100) { // Se è abbastanza opaco
+            return `rgb(${data[0]},${data[1]},${data[2]})`;
+          }
+          return null;
+        };
+
+        // 1. Prova il punto ideale (75%)
+        let color = getPixelColor(sampleX, sampleY);
+
+        // 2. Fallback: Scansione verticale se il punto è vuoto
+        if (!color) {
+          // Cerchiamo dal 30% all'85% dell'altezza
+          for (let y = Math.floor(img.height * 0.3); y < Math.floor(img.height * 0.85); y += 10) {
+            color = getPixelColor(sampleX, y);
+            if (color) break;
           }
         }
 
-        if (count > 0) {
-          resolve(`rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`);
+        if (color) {
+          console.log(`[ColorEye] Estratto per ${fileName}: ${color}`);
+          resolve(color);
         } else {
-          // Fallback: cerca il pixel più saturo se il punto mirato è trasparente
-          resolve(''); 
+          resolve('');
         }
       };
-      img.onerror = () => resolve('');
+      img.onerror = () => {
+        console.error(`[ColorEye] Errore caricamento immagine per estrazione: ${url}`);
+        resolve('');
+      };
     });
   };
 
@@ -305,7 +310,7 @@ function App() {
       if (changed) setAssetColors(newColors);
     };
     extract();
-  }, [selectedProduct]);
+  }, [selectedProduct, selectedProductId]);
 
   // Pre-caricamento intelligente degli asset
   useEffect(() => {
