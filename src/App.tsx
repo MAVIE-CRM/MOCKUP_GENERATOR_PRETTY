@@ -800,42 +800,46 @@ function App() {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
+              if (!assets || assets.length === 0) return null;
+
               // 1. MASTER CATEGORIES (LISCIO, AMMACCATO)
-              // Puliamo il percorso saltando la cartella che corrisponde al componente
               const categories = Array.from(new Set(assets.map(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return pathParts[0]?.toUpperCase();
+                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                return parts[0]?.toUpperCase();
               }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
-              const sParts = selectedAsset?.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase()) || [];
-              let currentCategory = sParts[0]?.toUpperCase() || categories[0];
+              const sParts = (selectedAsset?.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+              let currentCategory = sParts[0]?.toUpperCase() || categories[0] || '';
               
-              // 2. FILTRO ASSETS PER CATEGORIA SELEZIONATA
+              // 2. FILTRO ASSETS PER CATEGORIA
               const masterAssets = assets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return pathParts[0]?.toUpperCase() === currentCategory;
+                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                return parts[0]?.toUpperCase() === currentCategory;
               });
 
-              // 3. ASSET STANDARD (Direttamente nella categoria master)
+              // 3. ASSET STANDARD
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return pathParts.length === 1; 
+                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                return parts.length === 1; 
               }));
 
-              // 4. SOTTO-SEZIONI DINAMICHE (Finiture speciali)
+              // 4. SOTTO-SEZIONI
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                return pathParts.length > 1;
-              }).map(a => a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase())[1].toUpperCase()))).sort();
+                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                return parts.length > 1;
+              }).map(a => {
+                const parts = (a.folder || '').split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                return parts[1]?.toUpperCase();
+              }))).filter(s => s).sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
                 const target = (currentColor && assets.find(a => {
-                  const p = a.folder.split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
+                  const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
                   return p[0]?.toUpperCase() === cat && a.name.toUpperCase().includes(currentColor);
                 })) || assets.find(a => {
-                  const p = a.folder.split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
+                  const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
                   return p[0]?.toUpperCase() === cat;
                 });
                 
@@ -846,7 +850,7 @@ function App() {
                 <section key={cName} className="space-y-4">
                   <div className="flex items-center gap-2">
                     <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                    {(currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
+                    {currentCategory && (currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
                       <button 
                         onClick={handleSmartSwitch}
                         className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
@@ -870,7 +874,6 @@ function App() {
                     </div>
                   )}
 
-                  {/* ASSET NELLA CARTELLA PRINCIPALE */}
                   <div className="flex flex-wrap gap-2">
                     {standardAssets.map((asset) => (
                       <button
@@ -885,12 +888,12 @@ function App() {
                     ))}
                   </div>
 
-                  {/* FINITURE DIFFERENTI (SOTTO-CARTELLE) */}
                   {subFolders.map(sub => {
                     const subAssets = getUniqueAssets(masterAssets.filter(a => {
-                      const p = a.folder.split(/[/\\]/).filter(f => f);
+                      const p = (a.folder || '').split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
                       return p[1]?.toUpperCase() === sub;
                     }));
+                    if (subAssets.length === 0) return null;
                     return (
                       <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
                         <div className="flex items-center gap-2">
