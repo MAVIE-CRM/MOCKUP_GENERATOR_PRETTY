@@ -34,16 +34,26 @@ interface DownloadHistoryItem {
   thumbnail?: string;
 }
 
-const COLOR_MAP: Record<string, string> = {
-  'BAB': '#E0FFFF', 'PLS': '#FF69B4', 'ARG': '#C0C0C0', 'AZZ': '#87CEEB',
-  'BEI': '#F5F5DC', 'BK': '#1A1A1A', 'BLU': '#0000FF', 'BRW': '#A52A2A',
-  'CIL': '#8B0000', 'CYT': '#E4D00A', 'GRA': '#808080', 'GRI': '#808080',
-  'LIL': '#C8A2C8', 'MAG': '#FF00FF', 'MAL': '#E0B0FF', 'MAN': '#FF8C00',
-  'MEN': '#98FB98', 'NAV': '#000080', 'OLI': '#808000', 'ORA': '#D4AF37',
-  'OTT': '#008080', 'OW': '#FAF9F6', 'PNK': '#FFB6C1', 'POL': '#B0C4DE',
-  'RED': '#FF0000', 'ROS': '#FF0000', 'RUG': '#A0522D', 'SAB': '#F4A460',
-  'SAL': '#FA8072', 'TIF': '#008080', 'VER': '#008000', 'VIO': '#EE82EE',
-  'WH': '#FFFFFF', 'YW': '#FFD700', 'STI': '#8B4513'
+const EXTENDED_MAP: Record<string, string> = {
+  'BK': '#1A1A1A', 'BLACK': '#1A1A1A', 'NERO': '#1A1A1A', 'NER': '#1A1A1A',
+  'RED': '#EF4444', 'ROSSO': '#EF4444', 'ROS': '#EF4444',
+  'PNK': '#F472B6', 'PINK': '#F472B6', 'ROSA': '#F472B6',
+  'BEI': '#D6D3D1', 'BEIGE': '#D6D3D1',
+  'BLU': '#1D4ED8', 'BLUE': '#1D4ED8',
+  'AZZ': '#60A5FA', 'AZZURRO': '#60A5FA',
+  'VER': '#22C55E', 'VERDE': '#22C55E',
+  'YW': '#EAB308', 'YELLOW': '#EAB308', 'GIALLO': '#EAB308', 'GIA': '#EAB308',
+  'WH': '#FFFFFF', 'WHITE': '#FFFFFF', 'BIANCO': '#FFFFFF', 'BIA': '#FFFFFF',
+  'ARG': '#94A3B8', 'SILVER': '#94A3B8', 'ARGENTO': '#94A3B8',
+  'ORO': '#D4AF37', 'GOLD': '#D4AF37', 'ORA': '#D4AF37',
+  'VIO': '#A855F7', 'VIOLA': '#A855F7',
+  'COB': '#0047AB', 'ROY': '#4169E1', 'TIF': '#0ABAB5',
+  'BOR': '#800020', 'CIL': '#D21F3C', 'GRA': '#4A4A4A', 'GRI': '#808080',
+  'LIL': '#C8A2C8', 'MAG': '#C0007A', 'MAL': '#E0B0FF', 'MAN': '#FF8C00',
+  'MEN': '#98FB98', 'NAV': '#000080', 'OLI': '#808000', 'OTT': '#008080',
+  'POL': '#B0C4DE', 'RUG': '#A0522D', 'SAB': '#F4A460', 'SAL': '#FA8072',
+  'BAB': '#F0E68C', 'CYT': '#E4D00A', 'ARA': '#F97316', 'MAR': '#451A03',
+  'FRA': '#E11D48', 'NAP': '#000080', 'MIN': '#334155', 'LIM': '#A3E635'
 };
 
 function App() {
@@ -278,37 +288,10 @@ function App() {
     const name = asset.name.toUpperCase();
     const label = formatLabel(asset.name);
     
-    // ESTRATTORE UNIVERSALE: CATEGORIA_COLORE_VARIANTE
-    // Se abbiamo STICK_VIOLA_L -> il colore è VIOLA (indice 1)
-    // Se abbiamo NERO -> il colore è NERO (indice 0)
-    const parts = name.replace(/\..+$/, '').split('_');
-    const colorCode = parts.length >= 2 ? parts[1] : parts[0];
-    const EXTENDED_MAP: Record<string, string> = {
-      ...COLOR_MAP,
-      'BK': '#1A1A1A', 'BLACK': '#1A1A1A', 'NERO': '#1A1A1A',
-      'RED': '#EF4444', 'ROSSO': '#EF4444', 'ROS': '#EF4444',
-      'PNK': '#F472B6', 'PINK': '#F472B6', 'ROSA': '#F472B6',
-      'BEI': '#D6D3D1', 'BEIGE': '#D6D3D1',
-      'BLU': '#1D4ED8', 'BLUE': '#1D4ED8',
-      'AZZ': '#60A5FA', 'AZZURRO': '#60A5FA',
-      'VER': '#22C55E', 'VERDE': '#22C55E',
-      'YW': '#EAB308', 'YELLOW': '#EAB308', 'GIALLO': '#EAB308', 'GIA': '#EAB308',
-      'WH': '#FFFFFF', 'WHITE': '#FFFFFF', 'BIANCO': '#FFFFFF', 'BIA': '#FFFFFF',
-      'ARG': '#94A3B8', 'SILVER': '#94A3B8', 'ARGENTO': '#94A3B8',
-      'ORO': '#D4AF37', 'GOLD': '#D4AF37', 'ORA': '#D4AF37',
-      'VIO': '#A855F7', 'VIOLA': '#A855F7',
-      'COB': '#0047AB', 'ROY': '#4169E1', 'TIF': '#0ABAB5',
-      'BOR': '#800020', 'CIL': '#D21F3C', 'GRA': '#4A4A4A', 'GRI': '#808080',
-      'LIL': '#C8A2C8', 'MAG': '#C0007A', 'MAL': '#E0B0FF', 'MAN': '#FF8C00',
-      'MEN': '#98FB98', 'NAV': '#000080', 'OLI': '#808000', 'OTT': '#008080',
-      'POL': '#B0C4DE', 'RUG': '#A0522D', 'SAB': '#F4A460', 'SAL': '#FA8072',
-      'BAB': '#F0E68C', 'CYT': '#E4D00A', 'ARA': '#F97316', 'MAR': '#451A03',
-      'FRA': '#E11D48', 'NAP': '#000080'
-    };
-
-    // 1. Cerchiamo nella mappa usando il codice dal nome (es. STICK_VIOLA_L -> VIOLA)
-    // 2. Cerchiamo nella mappa usando l'etichetta (es. COB)
-    // 3. Fallback sull'analisi dei pixel
+    const parts = name.replace(/\..+$/, '').split(/[_\s-]/);
+    const colorCode = parts.length >= 2 ? parts[1].toUpperCase() : parts[0].toUpperCase();
+    
+    // Priorità: Codice dal nome -> Etichetta -> Analisi Pixel
     const bgColor = EXTENDED_MAP[colorCode] || EXTENDED_MAP[label] || assetColors[`${selectedProductId}_${asset.path}`];
     
     if (bgColor) {
