@@ -170,7 +170,7 @@ function App() {
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
-  const getImageAverageColor = (url: string, isStick: boolean = false): Promise<string> => {
+  const getImageAverageColor = (url: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "Anonymous";
@@ -179,21 +179,43 @@ function App() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve('');
-        canvas.width = 10; canvas.height = 10;
+        
+        // Usiamo una dimensione piccola per l'analisi ma sufficiente per i dettagli
+        canvas.width = 50; 
+        canvas.height = 50;
+        ctx.drawImage(img, 0, 0, 50, 50);
+        
+        const imageData = ctx.getImageData(0, 0, 50, 50).data;
+        let bestColor = { r: 0, g: 0, b: 0, sat: -1 };
 
-        const sourceX = isStick ? img.width * 0.48 : img.width * 0.45;
-        const sourceY = isStick ? img.height * 0.48 : img.height * 0.82;
-        const sourceWidth = img.width * 0.05;
-        const sourceHeight = img.height * 0.05;
+        // Scansioniamo i pixel cercando quello con la saturazione più alta
+        // (il colore più "vibrante" che non sia lo sfondo chiaro/grigio)
+        for (let i = 0; i < imageData.length; i += 4) {
+          const r = imageData[i];
+          const g = imageData[i + 1];
+          const b = imageData[i + 2];
+          const a = imageData[i + 3];
 
-        ctx.drawImage(img, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, 10, 10);
-        const imageData = ctx.getImageData(5, 5, 1, 1).data;
-        if (imageData[3] < 50 && isStick) {
-          ctx.drawImage(img, sourceX, img.height * 0.6, sourceWidth, sourceHeight, 0, 0, 10, 10);
-          const fallbackData = ctx.getImageData(5, 5, 1, 1).data;
-          return resolve(`rgb(${fallbackData[0]},${fallbackData[1]},${fallbackData[2]})`);
+          if (a < 128) continue; // Ignora trasparenza
+
+          // Calcolo saturazione approssimativa (max - min)
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          const sat = max - min;
+
+          // Evitiamo i bianchi e i grigi troppo chiari (sfondo)
+          if (max > 245 && min > 245) continue; 
+          
+          if (sat > bestColor.sat) {
+            bestColor = { r, g, b, sat };
+          }
         }
-        resolve(`rgb(${imageData[0]},${imageData[1]},${imageData[2]})`);
+
+        if (bestColor.sat > 5) {
+          resolve(`rgb(${bestColor.r},${bestColor.g},${bestColor.b})`);
+        } else {
+          resolve('');
+        }
       };
       img.onerror = () => resolve('');
     });
@@ -217,12 +239,11 @@ function App() {
       let changed = false;
 
       for (const [cName, assets] of Object.entries(selectedProduct.components)) {
-        const isStick = cName.toUpperCase().includes('STICK');
         for (const asset of assets) {
           const colorKey = `${selectedProductId}_${asset.path}`;
           if (!newColors[colorKey]) {
             const assetUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-            const color = await getImageAverageColor(assetUrl, isStick);
+            const color = await getImageAverageColor(assetUrl);
             if (color) {
               newColors[colorKey] = color;
               changed = true;
@@ -316,153 +337,9 @@ function App() {
     }));
   };
 
-  const handleSmartSwitch = () => {
-    if (!selectedProduct || !selections[selectedProductId]) return;
-    
-    const currentSelections = selections[selectedProductId];
-    const newSelections = { ...currentSelections };
-    let switchedCount = 0;
 
-    // 1. Determiniamo la direzione globale basandoci sul primo componente switchabile che troviamo
-    let globalTarget: 'LISCIO' | 'AMMACCATO' | null = null;
 
-    for (const cName of Object.keys(currentSelections)) {
-      const asset = currentSelections[cName];
-      const path = asset.fullPath.toUpperCase();
-      const name = asset.name.toUpperCase();
-      
-      if (path.includes('LISCIO') || name.includes('_L')) {
-        globalTarget = 'AMMACCATO';
-        break;
-      } else if (path.includes('AMM') || name.includes('_A')) {
-        globalTarget = 'LISCIO';
-        break;
-      }
-    }
 
-    if (!globalTarget) {
-      console.warn("SmartSwitch: Nessun componente liscio/ammaccato trovato.");
-      return;
-    }
-
-    console.log(`SmartSwitch: Direzione impostata -> ${globalTarget}`);
-
-    // 2. Applichiamo la direzione a tutti i componenti
-    Object.keys(currentSelections).forEach(cName => {
-      const asset = currentSelections[cName];
-      const name = asset.name.toUpperCase();
-      const fromSuffix = globalTarget === 'AMMACCATO' ? '_L' : '_A';
-      const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
-      const targetFolder = globalTarget;
-
-      const expectedName = name.replace(fromSuffix, toSuffix);
-      const possibleAssets = selectedProduct.components[cName];
-      if (!possibleAssets) return;
-
-      // Ricerca del gemello
-      const target = possibleAssets.find(a => {
-        const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        return aName === expectedName && (aFolder.includes(targetFolder) || aFolder.includes(targetFolder.substring(0, 3)));
-      }) || possibleAssets.find(a => {
-        const aName = a.name.toUpperCase();
-        return aName === expectedName;
-      }) || possibleAssets.find(a => {
-        const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        const baseColor = name.replace('_L', '').replace('_A', '').split('.')[0];
-        return aName.includes(baseColor) && aName.includes(toSuffix) && aFolder.includes(targetFolder.substring(0, 3));
-      });
-
-      if (target) {
-        newSelections[cName] = target;
-        switchedCount++;
-      }
-    });
-
-    if (switchedCount > 0) {
-      setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
-      setTimeout(() => setFloraStatus(''), 2000);
-    }
-  };
-
-  const handleSmartFit = async () => {
-    if (!selectedProduct || !selectedGraphic) return;
-    
-    setFloraStatus('Analisi Smart Fit...');
-    try {
-      const mainCompName = Object.keys(selectedProduct.components).find(c => {
-        const n = c.toUpperCase();
-        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
-               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
-               n.includes('LAMPADA') || n.includes('STRUTTURA');
-      }) || Object.keys(selectedProduct.components)[0];
-
-      const asset = selections[selectedProductId]?.[mainCompName];
-      if (!asset) return;
-
-      const pass = localStorage.getItem('pretty_auth') || '';
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      let baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-      
-      // Aggiungiamo il token se è il nostro server
-      if (baseUrl.includes(config.apiUrl)) {
-        baseUrl += (baseUrl.includes('?') ? '&' : '?') + `token=${pass}`;
-      }
-      
-      img.src = baseUrl.includes('api/onedrive/file') ? baseUrl : `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}_t=${Date.now()}`;
-      
-      await new Promise((resolve, reject) => { 
-        img.onload = resolve; 
-        img.onerror = () => reject(new Error("Errore caricamento"));
-      });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = 1000;
-      canvas.height = 1250;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      ctx.drawImage(img, 0, 0, 1000, 1250);
-      const data = ctx.getImageData(0, 0, 1000, 1250).data;
-
-      let minX = 1000, maxX = 0, minY = 1250, maxY = 0;
-      for (let y = 0; y < 1250; y += 4) {
-        for (let x = 0; x < 1000; x += 4) {
-          if (data[(y * 1000 + x) * 4 + 3] > 50) { // Soglia più alta per ignorare ombre
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-          }
-        }
-      }
-
-      if (maxX > minX) {
-        const compWidth = maxX - minX;
-        const compHeight = maxY - minY;
-        const compCenterX = minX + (compWidth / 2);
-        const compCenterY = minY + (compHeight / 2); // Centro geometrico puro
-
-        const targetWidth = compWidth * 0.75;
-        const newScale = Math.round((targetWidth / 285) * 100);
-        const relativeY = Math.round(compCenterY - (1250 * 0.74));
-        const relativeX = Math.round(compCenterX - 500);
-
-        setGraphicScale(Math.min(300, Math.max(10, newScale)));
-        setGraphicY(relativeY);
-        setGraphicX(relativeX);
-        setFloraStatus('Ottimizzato! ✨');
-      }
-      setTimeout(() => setFloraStatus(''), 2000);
-    } catch (err) {
-      setFloraStatus('Errore Smart Fit');
-      setTimeout(() => setFloraStatus(''), 3000);
-    }
-  };
 
   const getUniqueAssets = (assets: ComponentAsset[]) => {
     const seen = new Set();
