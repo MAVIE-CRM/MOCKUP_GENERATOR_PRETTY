@@ -839,12 +839,14 @@ function App() {
 
               // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
               // Usiamo le radici per essere flessibili (es. LISCII, AMMACCATI)
-              const categories = Array.from(new Set(assets.map(a => {
+              const rawCategories = assets.map(a => {
                 const f = (a.folder || '').toUpperCase();
                 if (f.includes('LISC')) return 'LISCIO';
                 if (f.includes('AMM')) return 'AMMACCATO';
                 return null;
-              }))).filter((c): c is string => typeof c === 'string').sort();
+              });
+              
+              const categories = Array.from(new Set(rawCategories)).filter((c): c is string => c !== null).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
@@ -878,7 +880,7 @@ function App() {
                 const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
                 const masterIdx = parts.findIndex(p => p.includes(targetKey));
                 return parts[masterIdx + 1];
-              }))).filter((s): s is string => typeof s === 'string').sort();
+              }))).filter((s): s is string => s !== undefined && s !== null).sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
@@ -903,7 +905,7 @@ function App() {
                   </div>
 
                   <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
-                    {categories.map(cat => (
+                    {categories.map((cat: string) => (
                       <button 
                         key={cat} 
                         onClick={() => switchCategory(cat)} 
