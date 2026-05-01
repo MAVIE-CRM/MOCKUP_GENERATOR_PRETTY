@@ -839,7 +839,7 @@ function App() {
 
               // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
               // Usiamo le radici per essere flessibili (es. LISCII, AMMACCATI)
-              const rawCategories = assets.map(a => {
+              const rawCategories: (string | null)[] = assets.map(a => {
                 const f = (a.folder || '').toUpperCase();
                 if (f.includes('LISC')) return 'LISCIO';
                 if (f.includes('AMM')) return 'AMMACCATO';
