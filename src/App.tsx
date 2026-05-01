@@ -229,25 +229,57 @@ function App() {
   }, [selectedProduct]);
 
   const getAssetStyle = (asset: ComponentAsset) => {
-    const colorKey = `${selectedProductId}_${asset.path}`;
-    const bgColor = assetColors[colorKey];
-    if (bgColor) {
-      const match = bgColor.match(/\d+/g);
-      if (match) {
-        const [r, g, b] = match.map(Number);
-        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-        return { backgroundColor: bgColor, color: brightness > 155 ? '#000' : '#fff' };
-      }
-    }
+    const name = asset.name.toUpperCase();
     const label = formatLabel(asset.name);
+    
+    // ESTRATTORE UNIVERSALE: CATEGORIA_COLORE_VARIANTE
+    // Se abbiamo STICK_VIOLA_L -> il colore è VIOLA (indice 1)
+    // Se abbiamo NERO -> il colore è NERO (indice 0)
+    const parts = name.replace(/\..+$/, '').split('_');
+    const colorCode = parts.length >= 2 ? parts[1] : parts[0];
+    
     const EXTENDED_MAP: Record<string, string> = {
       ...COLOR_MAP,
-      'BK': '#000000', 'BLACK': '#000000',
+      'BK': '#000000', 'BLACK': '#000000', 'NERO': '#000000',
       'RED': '#FF0000', 'ROSSO': '#FF0000',
       'PNK': '#FFB6C1', 'PINK': '#FFB6C1', 'ROSA': '#FFB6C1',
       'BEI': '#F5F5DC', 'BEIGE': '#F5F5DC',
       'BLU': '#0000FF', 'BLUE': '#0000FF',
       'AZZ': '#87CEEB', 'AZZURRO': '#87CEEB',
+      'VER': '#22c55e', 'VERDE': '#22c55e',
+      'YW': '#eab308', 'YELLOW': '#eab308', 'GIALLO': '#eab308',
+      'WH': '#ffffff', 'WHITE': '#ffffff', 'BIANCO': '#ffffff',
+      'ARG': '#94a3b8', 'SILVER': '#94a3b8', 'ARGENTO': '#94a3b8',
+      'ORO': '#d4af37', 'GOLD': '#d4af37',
+      'VIO': '#a855f7', 'VIOLA': '#a855f7',
+      'ARA': '#f97316', 'ARANCIO': '#f97316',
+      'MIN': '#1e293b', // Esempio per MIN (Midnight?)
+    };
+
+    const bgColor = EXTENDED_MAP[colorCode] || EXTENDED_MAP[label] || assetColors[`${selectedProductId}_${asset.path}`];
+    
+    if (bgColor) {
+      const match = bgColor.match(/\d+/g);
+      let r, g, b;
+      if (match && bgColor.startsWith('rgb')) {
+        [r, g, b] = match.map(Number);
+      } else {
+        // Hex to RGB simple check
+        const hex = bgColor.replace('#', '');
+        r = parseInt(hex.substring(0, 2), 16) || 255;
+        g = parseInt(hex.substring(2, 4), 16) || 255;
+        b = parseInt(hex.substring(4, 6), 16) || 255;
+      }
+      const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+      return { 
+        backgroundColor: bgColor, 
+        color: brightness > 155 ? '#000' : '#fff',
+        borderColor: brightness > 230 ? 'rgba(0,0,0,0.1)' : 'transparent'
+      };
+    }
+    
+    return { backgroundColor: '#334155', color: '#fff' };
+  };
       'GRI': '#808080', 'GRIGIO': '#808080',
       'WH': '#FFFFFF', 'WHITE': '#FFFFFF', 'BIANCO': '#FFFFFF',
       'YW': '#FFFF00', 'YELLOW': '#FFFF00', 'GIALLO': '#FFFF00'
@@ -722,17 +754,23 @@ function App() {
                   )}
 
                   <div className="flex flex-wrap gap-2">
-                    {uniqueStandard.map((asset) => (
-                      <button
-                        key={asset.path}
-                        onClick={() => handleSelection(cName, asset)}
-                        style={getAssetStyle(asset)}
-                        title={formatLabel(asset.name)}
-                        className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                      >
-                        {formatLabel(asset.name).substring(0, 3)}
-                      </button>
-                    ))}
+                    {uniqueStandard.map((asset) => {
+                      const name = asset.name.toUpperCase();
+                      const parts = name.replace(/\..+$/, '').split('_');
+                      const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
+                      
+                      return (
+                        <button
+                          key={asset.path}
+                          onClick={() => handleSelection(cName, asset)}
+                          style={getAssetStyle(asset)}
+                          title={formatLabel(asset.name)}
+                          className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                        >
+                          {displayLabel}
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {uniqueMetal.length > 0 && (
@@ -743,17 +781,23 @@ function App() {
                         <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {uniqueMetal.map((asset) => (
-                          <button
-                            key={asset.path}
-                            onClick={() => handleSelection(cName, asset)}
-                            style={getAssetStyle(asset)}
-                            title={formatLabel(asset.name)}
-                            className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                          >
-                            {formatLabel(asset.name).substring(0, 3)}
-                          </button>
-                        ))}
+                        {uniqueMetal.map((asset) => {
+                          const name = asset.name.toUpperCase();
+                          const parts = name.replace(/\..+$/, '').split('_');
+                          const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
+
+                          return (
+                            <button
+                              key={asset.path}
+                              onClick={() => handleSelection(cName, asset)}
+                              style={getAssetStyle(asset)}
+                              title={formatLabel(asset.name)}
+                              className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                            >
+                              {displayLabel}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
