@@ -180,7 +180,7 @@ function App() {
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
-  const getImageAverageColor = (url: string): Promise<string> => {
+  const getImageAverageColor = (url: string, fileName: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "Anonymous";
@@ -190,41 +190,48 @@ function App() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve('');
         
-        // Usiamo una dimensione piccola per l'analisi ma sufficiente per i dettagli
-        canvas.width = 50; 
-        canvas.height = 50;
-        ctx.drawImage(img, 0, 0, 50, 50);
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
         
-        const imageData = ctx.getImageData(0, 0, 50, 50).data;
-        let bestColor = { r: 0, g: 0, b: 0, sat: -1 };
+        const name = fileName.toUpperCase();
+        let sampleX = img.width * 0.5;
+        let sampleY = img.height * 0.5;
 
-        // Scansioniamo i pixel cercando quello con la saturazione più alta
-        // (il colore più "vibrante" che non sia lo sfondo chiaro/grigio)
-        for (let i = 0; i < imageData.length; i += 4) {
-          const r = imageData[i];
-          const g = imageData[i + 1];
-          const b = imageData[i + 2];
-          const a = imageData[i + 3];
+        // LOGICA DI CAMPIONAMENTO MIRATO PER CATEGORIA
+        if (name.includes('PLS_') || name.includes('BARATTOLO')) {
+          // Barattoli: 50% centro, scendi al 65-70% (corpo del prodotto)
+          sampleY = img.height * 0.68;
+        } else if (name.includes('PROFUMATORE') || name.includes('PROF_')) {
+          // Profumatori: 50% centro, scendi all'82% (zona liquido/fondo)
+          sampleY = img.height * 0.82;
+        } else if (name.includes('STICK')) {
+          // Stick: 50% centro esatto
+          sampleY = img.height * 0.5;
+        } else if (name.includes('LAMPADA')) {
+          // Lampada: centro alto
+          sampleY = img.height * 0.4;
+        }
 
-          if (a < 128) continue; // Ignora trasparenza
-
-          // Calcolo saturazione approssimativa (max - min)
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const sat = max - min;
-
-          // Evitiamo i bianchi e i grigi troppo chiari (sfondo)
-          if (max > 245 && min > 245) continue; 
-          
-          if (sat > bestColor.sat) {
-            bestColor = { r, g, b, sat };
+        // Prendiamo una piccola media (5x5 pixel) intorno al punto per evitare "rumore"
+        const size = 5;
+        const data = ctx.getImageData(sampleX - 2, sampleY - 2, size, size).data;
+        
+        let r = 0, g = 0, b = 0, count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i+3] > 200) { // Solo pixel opachi
+            r += data[i];
+            g += data[i+1];
+            b += data[i+2];
+            count++;
           }
         }
 
-        if (bestColor.sat > 5) {
-          resolve(`rgb(${bestColor.r},${bestColor.g},${bestColor.b})`);
+        if (count > 0) {
+          resolve(`rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`);
         } else {
-          resolve('');
+          // Fallback: cerca il pixel più saturo se il punto mirato è trasparente
+          resolve(''); 
         }
       };
       img.onerror = () => resolve('');
@@ -253,7 +260,7 @@ function App() {
           const colorKey = `${selectedProductId}_${asset.path}`;
           if (!newColors[colorKey]) {
             const assetUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-            const color = await getImageAverageColor(assetUrl);
+            const color = await getImageAverageColor(assetUrl, asset.name);
             if (color) {
               newColors[colorKey] = color;
               changed = true;
@@ -292,7 +299,8 @@ function App() {
     const colorCode = parts.length >= 2 ? parts[1].toUpperCase() : parts[0].toUpperCase();
     
     // Priorità: Codice dal nome -> Etichetta -> Analisi Pixel
-    const bgColor = EXTENDED_MAP[colorCode] || EXTENDED_MAP[label] || assetColors[`${selectedProductId}_${asset.path}`];
+    const pixelColor = assetColors[`${selectedProductId}_${asset.path}`];
+    const bgColor = pixelColor || EXTENDED_MAP[colorCode] || EXTENDED_MAP[label];
     
     if (bgColor) {
       // Calcolo contrasto testo (bianco o nero)
