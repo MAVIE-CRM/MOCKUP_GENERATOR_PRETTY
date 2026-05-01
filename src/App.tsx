@@ -800,40 +800,44 @@ function App() {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
-              // 1. MASTER CATEGORIES (Livello 1: LISCIO, AMMACCATO)
+              // 1. MASTER CATEGORIES (LISCIO, AMMACCATO)
+              // Puliamo il percorso saltando la cartella che corrisponde al componente
               const categories = Array.from(new Set(assets.map(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 return pathParts[0]?.toUpperCase();
               }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
-              const sParts = selectedAsset?.folder.split(/[/\\]/).filter(p => p) || [];
+              const sParts = selectedAsset?.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase()) || [];
               let currentCategory = sParts[0]?.toUpperCase() || categories[0];
               
               // 2. FILTRO ASSETS PER CATEGORIA SELEZIONATA
               const masterAssets = assets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 return pathParts[0]?.toUpperCase() === currentCategory;
               });
 
-              // 3. ASSET STANDARD (Direttamente in LISCIO/AMMACCATO)
+              // 3. ASSET STANDARD (Direttamente nella categoria master)
               const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 return pathParts.length === 1; 
               }));
 
-              // 4. SOTTO-SEZIONI DINAMICHE (Livello 2: METAL, SPECIAL, ecc.)
+              // 4. SOTTO-SEZIONI DINAMICHE (Finiture speciali)
               const subFolders = Array.from(new Set(masterAssets.filter(a => {
-                const pathParts = a.folder.split(/[/\\]/).filter(p => p);
+                const pathParts = a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                 return pathParts.length > 1;
-              }).map(a => a.folder.split(/[/\\]/)[1].toUpperCase()))).sort();
+              }).map(a => a.folder.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase())[1].toUpperCase()))).sort();
 
               const switchCategory = (cat: string) => {
                 const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
                 const target = (currentColor && assets.find(a => {
-                  const p = a.folder.split(/[/\\]/).filter(f => f);
+                  const p = a.folder.split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
                   return p[0]?.toUpperCase() === cat && a.name.toUpperCase().includes(currentColor);
-                })) || assets.find(a => a.folder.split(/[/\\]/)[0]?.toUpperCase() === cat);
+                })) || assets.find(a => {
+                  const p = a.folder.split(/[/\\]/).filter(f => f && f.toUpperCase() !== cName.toUpperCase());
+                  return p[0]?.toUpperCase() === cat;
+                });
                 
                 if (target) handleSelection(cName, target);
               };
