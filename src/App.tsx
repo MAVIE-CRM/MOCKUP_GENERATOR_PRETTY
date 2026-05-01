@@ -238,19 +238,13 @@ function App() {
         let sampleX = img.width * 0.5;
         let sampleY = img.height * 0.5;
 
-        // LOGICA DI CAMPIONAMENTO MIRATO PER CATEGORIA
-        if (name.includes('PLS_') || name.includes('BARATTOLO')) {
-          // Barattoli: 50% centro, scendi al 65-70% (corpo del prodotto)
-          sampleY = img.height * 0.68;
-        } else if (name.includes('PROFUMATORE') || name.includes('PROF_')) {
-          // Profumatori: 50% centro, scendi all'82% (zona liquido/fondo)
-          sampleY = img.height * 0.82;
-        } else if (name.includes('STICK')) {
-          // Stick: 50% centro esatto
+        // LOGICA DI CAMPIONAMENTO AUTOMATICA (75% ALTEZZA)
+        // Puntiamo al 75% dell'altezza (corpo basso del prodotto) per il colore più saturo
+        sampleY = img.height * 0.75;
+
+        // Casi particolari se necessario
+        if (name.includes('STICK')) {
           sampleY = img.height * 0.5;
-        } else if (name.includes('LAMPADA')) {
-          // Lampada: centro alto
-          sampleY = img.height * 0.4;
         }
 
         // Prendiamo una piccola media (5x5 pixel) intorno al punto per evitare "rumore"
@@ -259,7 +253,7 @@ function App() {
         
         let r = 0, g = 0, b = 0, count = 0;
         for (let i = 0; i < data.length; i += 4) {
-          if (data[i+3] > 200) { // Solo pixel opachi
+          if (data[i+3] > 150) { // Consideriamo anche pixel parzialmente trasparenti
             r += data[i];
             g += data[i+1];
             b += data[i+2];
