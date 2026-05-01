@@ -526,8 +526,90 @@ function App() {
     }
   };
 
-  const handleSmartFit = () => {
-    handleFloraGenerate();
+  const handleSmartFit = async () => {
+    if (!selectedProduct || !selectedGraphic) return;
+    
+    setFloraStatus('Analisi Bounding Box...');
+    try {
+      // 1. Troviamo l'asset del corpo principale
+      const mainCompName = Object.keys(selectedProduct.components).find(c => {
+        const n = c.toUpperCase();
+        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
+               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
+               n.includes('LAMPADA') || n.includes('STRUTTURA');
+      }) || Object.keys(selectedProduct.components)[0];
+
+      const asset = selections[selectedProductId]?.[mainCompName];
+      if (!asset) return;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      let baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
+      img.src = baseUrl;
+      
+      await new Promise((resolve) => { img.onload = resolve; });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 400; // Analisi a bassa risoluzione per velocità
+      canvas.height = 500;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      ctx.drawImage(img, 0, 0, 400, 500);
+      const data = ctx.getImageData(0, 0, 400, 500).data;
+
+      // Analizziamo la larghezza di ogni riga per trovare il "corpo solido"
+      let rowWidths = [];
+      for (let y = 0; y < 500; y++) {
+        let first = -1, last = -1;
+        for (let x = 0; x < 400; x++) {
+          if (data[(y * 400 + x) * 4 + 3] > 20) {
+            if (first === -1) first = x;
+            last = x;
+          }
+        }
+        rowWidths[y] = first === -1 ? 0 : last - first;
+      }
+
+      // Troviamo la riga più larga (il diametro del barattolo)
+      const maxWidth = Math.max(...rowWidths);
+      
+      // Il "corpo" inizia quando la riga è almeno il 70% della larghezza massima
+      // (questo esclude i bastoncini che sono molto più stretti del barattolo)
+      let bodyTop = 0, bodyBottom = 499;
+      for (let y = 0; y < 500; y++) {
+        if (rowWidths[y] > maxWidth * 0.7) {
+          bodyTop = y;
+          break;
+        }
+      }
+      for (let y = 499; y >= 0; y--) {
+        if (rowWidths[y] > 5) { // Fine del prodotto alla base
+          bodyBottom = y;
+          break;
+        }
+      }
+
+      const bodyHeight = bodyBottom - bodyTop;
+      const centerY = bodyTop + (bodyHeight / 2);
+
+      // Calcoliamo scala e posizione
+      // Mappiamo i 500px del canvas ai 1250px reali del mockup (fattore 2.5)
+      const realCenterY = centerY * 2.5;
+      const targetY = Math.round((realCenterY - 625) / 5); // Offset relativo al centro (625)
+      
+      // La scala si basa sulla larghezza del corpo
+      const targetScale = Math.round((maxWidth / 400) * 110); 
+
+      setGraphicScale(targetScale);
+      setGraphicY(targetY);
+      setGraphicX(0); // Centrato orizzontalmente di default
+
+      setFloraStatus('Smart Fit: Corpo Rilevato! ✨');
+      setTimeout(() => setFloraStatus(''), 2000);
+    } catch (err) {
+      setFloraStatus('Errore Smart Fit');
+    }
   };
 
   const handleExport = () => {
