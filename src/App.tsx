@@ -808,9 +808,9 @@ function App() {
           </div>
         </div>
 
-        <div className="flex-1 h-full bg-[#f8f8f8] flex flex-col overflow-hidden relative">
+        <div className="flex-1 h-full bg-[#f8f8f8] flex flex-col relative">
           {/* Top Header */}
-          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-10">
+          <div className="h-14 border-b border-black/[0.05] bg-white/80 backdrop-blur-md flex items-center justify-between px-8 shrink-0 z-[60]">
             <div className="flex items-center gap-3">
               <h2 className="text-xs font-black text-black/20 uppercase tracking-[0.3em]">{selectedProduct?.name || 'Studio'} View</h2>
               <div className="h-1 w-1 rounded-full bg-green-500 animate-pulse" />
@@ -880,7 +880,7 @@ function App() {
                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                        className="absolute right-0 mt-3 w-80 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/[0.03] overflow-hidden z-[100]"
+                        className="absolute right-4 mt-3 w-80 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/[0.03] overflow-hidden z-[100]"
                       >
                         <div className="p-5 border-b border-black/[0.03] flex items-center justify-between bg-gray-50/50">
                           <h3 className="text-[10px] font-black uppercase tracking-widest text-black/40">Cronologia Export</h3>
