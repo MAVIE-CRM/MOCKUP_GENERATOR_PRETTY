@@ -85,6 +85,7 @@ function App() {
   const [isFloraRunning, setIsFloraRunning] = useState(false);
   const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
   const [floraStatus, setFloraStatus] = useState<string>('');
+  const [smartFitStatus, setSmartFitStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -529,7 +530,7 @@ function App() {
   const handleSmartFit = async () => {
     if (!selectedProduct || !selectedGraphic) return;
     
-    setFloraStatus('Analisi Bounding Box...');
+    setSmartFitStatus('Analisi Bounding Box...');
     try {
       // 1. Troviamo l'asset del corpo principale
       const mainCompName = Object.keys(selectedProduct.components).find(c => {
@@ -605,10 +606,11 @@ function App() {
       setGraphicY(targetY);
       setGraphicX(0); // Centrato orizzontalmente di default
 
-      setFloraStatus('Smart Fit: Corpo Rilevato! ✨');
-      setTimeout(() => setFloraStatus(''), 2000);
+      setSmartFitStatus('Corpo Rilevato! ✨');
+      setTimeout(() => setSmartFitStatus(''), 2000);
     } catch (err) {
-      setFloraStatus('Errore Smart Fit');
+      setSmartFitStatus('Errore Smart Fit');
+      setTimeout(() => setSmartFitStatus(''), 2000);
     }
   };
 
@@ -773,38 +775,38 @@ function App() {
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
             {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
+              // 1. Identifichiamo le categorie "Master" (es. LISCIO, AMMACCATO)
+              // Ignoriamo le sottocartelle come METAL nel selettore principale
               const categories = Array.from(new Set(assets.map(a => {
                 const parts = a.folder.split(/[/\\]/);
-                let cat = parts[parts.length - 1].toUpperCase();
-                // Se l'ultima cartella è METAL, prendiamo quella superiore per la categoria principale
-                if (cat === 'METAL' && parts.length > 1) {
-                  cat = parts[parts.length - 2].toUpperCase();
-                }
-                return cat;
+                // La categoria master è la prima cartella dopo il nome del componente
+                // O l'ultima se non ci sono sottocartelle
+                return parts[0].toUpperCase();
               }))).filter(c => c).sort();
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sParts = selectedAsset?.folder.split(/[/\\]/) || [];
-              let currentCategory = sParts[sParts.length - 1]?.toUpperCase() || categories[0];
-              if (currentCategory === 'METAL' && sParts.length > 1) {
-                currentCategory = sParts[sParts.length - 2].toUpperCase();
-              }
+              let currentCategory = sParts[0]?.toUpperCase() || categories[0];
               
-              const categoryAssets = assets.filter(a => {
-                const f = a.folder.toUpperCase();
-                return f.includes(currentCategory);
-              });
+              // 2. Filtriamo tutti gli asset che appartengono a questa categoria master (incluse sottocartelle)
+              const masterAssets = assets.filter(a => a.folder.toUpperCase().startsWith(currentCategory));
+
+              // 3. Dividiamo tra asset "Standard" (nella cartella base) e "Sub-Sections" (nelle sottocartelle)
+              const standardAssets = getUniqueAssets(masterAssets.filter(a => {
+                const parts = a.folder.split(/[/\\]/);
+                return parts.length === 1; // È direttamente nella cartella master
+              }));
+
+              // Troviamo tutte le sottocartelle uniche (es. METAL, SPECIAL, ecc.)
+              const subFolders = Array.from(new Set(masterAssets.filter(a => {
+                const parts = a.folder.split(/[/\\]/);
+                return parts.length > 1;
+              }).map(a => a.folder.split(/[/\\]/)[1].toUpperCase()))).sort();
 
               const switchCategory = (cat: string) => {
-                const target = assets.find(a => {
-                  const f = a.folder.toUpperCase();
-                  return f.includes(cat) && !f.endsWith('METAL');
-                }) || assets.find(a => a.folder.toUpperCase().includes(cat));
+                const target = assets.find(a => a.folder.toUpperCase().startsWith(cat));
                 if (target) handleSelection(cName, target);
               };
-              
-              const uniqueStandard = getUniqueAssets(categoryAssets.filter(a => !a.folder.toUpperCase().includes('METAL')));
-              const uniqueMetal = getUniqueAssets(categoryAssets.filter(a => a.folder.toUpperCase().includes('METAL')));
 
               return (
                 <section key={cName} className="space-y-4">
@@ -819,9 +821,6 @@ function App() {
                         </button>
                       )}
                     </div>
-                    {categories.length > 1 && (
-                      <span className="text-[8px] font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">{currentCategory}</span>
-                    )}
 
                   {categories.length > 1 && (
                     <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
@@ -837,8 +836,9 @@ function App() {
                     </div>
                   )}
 
+                  {/* ASSET STANDARD */}
                   <div className="flex flex-wrap gap-2">
-                    {uniqueStandard.map((asset) => {
+                    {standardAssets.map((asset) => {
                       const name = asset.name.toUpperCase();
                       const parts = name.replace(/\..+$/, '').split('_');
                       const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
@@ -857,34 +857,38 @@ function App() {
                     })}
                   </div>
 
-                  {uniqueMetal.length > 0 && (
-                    <div className="space-y-3 pt-2 border-t border-white/5">
-                      <div className="flex items-center gap-2">
-                        <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Metal Edition</span>
-                        <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {uniqueMetal.map((asset) => {
-                          const name = asset.name.toUpperCase();
-                          const parts = name.replace(/\..+$/, '').split('_');
-                          const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
+                  {/* SOTTO-SEZIONI DINAMICHE (METAL, ETC.) */}
+                  {subFolders.map(sub => {
+                    const subAssets = getUniqueAssets(masterAssets.filter(a => a.folder.toUpperCase().includes(sub)));
+                    return (
+                      <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
+                        <div className="flex items-center gap-2">
+                          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                          <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">{sub} Edition</span>
+                          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {subAssets.map((asset) => {
+                            const name = asset.name.toUpperCase();
+                            const parts = name.replace(/\..+$/, '').split('_');
+                            const displayLabel = parts.length >= 2 ? parts[1].substring(0, 3) : formatLabel(asset.name).substring(0, 3);
 
-                          return (
-                            <button
-                              key={asset.path}
-                              onClick={() => handleSelection(cName, asset)}
-                              style={getAssetStyle(asset)}
-                              title={formatLabel(asset.name)}
-                              className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                            >
-                              {displayLabel}
-                            </button>
-                          );
-                        })}
+                            return (
+                              <button
+                                key={asset.path}
+                                onClick={() => handleSelection(cName, asset)}
+                                style={getAssetStyle(asset)}
+                                title={formatLabel(asset.name)}
+                                className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                              >
+                                {displayLabel}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })}
                 </section>
               );
             })}
@@ -989,9 +993,18 @@ function App() {
                   <RefreshCcw size={14} className="group-active:rotate-180 transition-transform duration-500" />
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Switch</span>
                 </button>
-                <button onClick={handleSmartFit} className="p-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20">
-                  <Wand2 size={14} className="group-hover:rotate-12 transition-transform" />
+                <button onClick={handleSmartFit} className="p-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20 relative">
+                  <Search size={14} className="group-hover:scale-110 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
+                  {smartFitStatus && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black text-white text-[8px] font-black py-1 px-3 rounded-full shadow-xl z-50"
+                    >
+                      {smartFitStatus}
+                    </motion.div>
+                  )}
                 </button>
               </div>
 
