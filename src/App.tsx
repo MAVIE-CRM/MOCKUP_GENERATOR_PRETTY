@@ -229,12 +229,21 @@ function App() {
       // Setup Prodotti
       setProducts(pData);
       if (pData.length > 0) {
-        setSelectedProductId(pData[0].id);
+        // Cerchiamo il primo prodotto che NON sia interamente AI (basato sul primo asset del primo componente)
+        const defaultProduct = pData.find(p => {
+          const firstComp = Object.values(p.components)[0]?.[0];
+          return !firstComp?.folder?.toUpperCase().includes('AI');
+        }) || pData[0];
+        setSelectedProductId(defaultProduct.id);
         const initialSelections: Record<string, Record<string, ComponentAsset>> = {};
         pData.forEach(p => {
           initialSelections[p.id] = {};
           Object.entries(p.components).forEach(([cName, assets]) => {
-            if (assets.length > 0) initialSelections[p.id][cName] = assets[0];
+            if (assets.length > 0) {
+              // Cerchiamo il primo asset che NON sia in una sottocartella "AI"
+              const defaultAsset = assets.find(a => !(a.folder || '').toUpperCase().includes('AI')) || assets[0];
+              initialSelections[p.id][cName] = defaultAsset;
+            }
           });
         });
         setSelections(initialSelections);
@@ -322,7 +331,7 @@ function App() {
   const formatLabel = (name: string) => {
     return name
       .replace(/\.(jpg|png|svg|jpeg)$/i, '')
-      .replace(/^pls_/i, '')
+      .replace(/^(pls|pll|plsm|plv|plc2|plc4)_/i, '')
       .replace(/(_l|_a)$/i, '')
       .replace(/(_l2|_a2)$/i, '')
       .replace(/_/g, ' ')
@@ -424,12 +433,15 @@ function App() {
     const fullPath = asset.fullPath.toUpperCase();
     
     // 1. ESTRAZIONE IDENTITÀ INTELLIGENTE
-    const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM'];
+    const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
+    const knownPrefixes = ['PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
     
-    const nameParts = name.replace(/\..+$/, '').split('_');
-    const fullColorName = nameParts.length >= 2 ? nameParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_') : name;
+    const nameParts = name.replace(/\..+$/, '').split(/[_-]/);
+    const cleanParts = nameParts.filter(p => !knownPrefixes.includes(p.toUpperCase()));
+    const fullColorName = cleanParts.filter(p => !surfaceWords.includes(p.toUpperCase())).join('_') || name;
     const normColor = normalize(fullColorName);
     
+    const macroCategory = getProductMacroCategory();
     const isAmmaccato = name.includes('_A') || fullPath.includes('AMM') || name.includes('AMMACCATA') || name.includes('AMMACCATO');
     const targetSuffix = isAmmaccato ? '_A' : '_L';
 
@@ -452,22 +464,26 @@ function App() {
           Object.keys(p.components).forEach(pCName => {
             const upCName = pCName.toUpperCase();
             const upComponentName = componentName.toUpperCase();
-
-            const isMainBody = (n: string) => n.includes('BARATTOLO') || n.includes('VASO') || n.includes('PLS') || n.includes('FLACONE') || n.includes('LAMPADA') || n.includes('STRUTTURA') || n.includes('CANDELA') || n.includes('VETRO');
+            const isMainBody = (n: string) => {
+              const words = ['BARATTOLO', 'BARATTOLI', 'VASO', 'PLS', 'PLL', 'PLSM', 'PLV', 'FLACONE', 'LAMPADA', 'STRUTTURA', 'CANDELA', 'VETRO', 'PLC2', 'PLC4'];
+              return words.some(w => n.includes(w));
+            };
             const isTappo = (n: string) => n.includes('TAPPO') || n.includes('CHIUSURA') || n.includes('COPERCHIO');
             const isStick = (n: string) => n.includes('STICK') || n.includes('BAST') || n.includes('LEGNO') || n.includes('DIFFUSORE');
 
             if (!(upCName === upComponentName || (isMainBody(upComponentName) && isMainBody(upCName)) || (isTappo(upComponentName) && isTappo(upCName)) || (isStick(upComponentName) && isStick(upCName)))) return;
 
             const productAssets = p.components[pCName];
+            const pTargetSuffix = isAmmaccato ? '_A' : '_L';
             
             // CERCHIAMO IL MATCH USANDO IL COLORE NORMALIZZATO (Identità Esatta)
             let match = productAssets.find(a => {
               const aName = a.name.toUpperCase();
               const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
-              const aColorRaw = aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+              const aCleanParts = aParts.filter(p => !knownPrefixes.includes(p));
+              const aColorRaw = aCleanParts.filter(p => !surfaceWords.includes(p)).join('_');
               const aColorNorm = normalize(aColorRaw);
-              const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
+              const hasSurface = aName.includes(pTargetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
               return (aColorRaw === fullColorName || aColorNorm === normColor) && hasSurface;
             });
 
@@ -483,7 +499,7 @@ function App() {
 
             if (match) {
               const matchName = match.name.toUpperCase();
-              const isPerfectSurface = matchName.includes(targetSuffix) || match.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
+              const isPerfectSurface = matchName.includes(pTargetSuffix) || match.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
               
               const upPName = p.name.toUpperCase();
               const isAutoMatchProduct = 
@@ -498,17 +514,24 @@ function App() {
             } else {
               // 3. Colore Simile (Fuzzy)
               // Se non abbiamo trovato il colore normalizzato, cerchiamo per parole chiave base
-              const colors = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA'];
+              const colors = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA', 'SALVIA', 'GRAFITE', 'BORDEAUX', 'CILIEGIA', 'COBALTO', 'CYTRON', 'MAGENTA', 'LILLA'];
               const baseColor = colors.find(c => normColor.includes(c));
 
               match = productAssets.find(a => {
                 const aName = a.name.toUpperCase();
                 const hasBase = baseColor ? aName.includes(baseColor) : false;
-                return hasBase && (aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC'));
-              }) || productAssets.find(a => baseColor && a.name.toUpperCase().includes(baseColor));
+                const hasSurf = aName.includes(pTargetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
+                return hasBase && hasSurf;
+              }) || productAssets.find(a => {
+                const aName = a.name.toUpperCase();
+                const hasBase = baseColor ? aName.includes(baseColor) : false;
+                return hasBase;
+              });
 
               if (match) {
-                const foundAltColor = match.name.toUpperCase().replace(/\..+$/, '').split('_').slice(1).filter(p => !surfaceWords.includes(p)).join(' ');
+                const mParts = match.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
+                const mClean = mParts.filter(p => !knownPrefixes.includes(p));
+                const foundAltColor = mClean.filter(p => !surfaceWords.includes(p)).join(' ');
                 newWarnings[p.id] = `⚠️ '${fullColorName.replace(/_/g, ' ')}' non trovato per ${p.name}, applicato '${foundAltColor}'`;
               } else {
                 newWarnings[p.id] = `❌ Nessun colore simile a '${fullColorName.replace(/_/g, ' ')}' per ${p.name}`;
@@ -635,12 +658,14 @@ function App() {
     // 2. Applichiamo la direzione con logica intelligente
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
-      const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM'];
+      const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
+      const knownPrefixes = ['PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
       
       const currentAssetParts = asset.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
       const hasLRSuffix = ['L', 'A'].includes(currentAssetParts[currentAssetParts.length - 1]);
-      const currentPrefix = hasLRSuffix ? currentAssetParts.slice(0, -1).join('_') : currentAssetParts.join('_');
-      const currentAssetColorRaw = currentAssetParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+      const currentClean = currentAssetParts.filter(p => !knownPrefixes.includes(p));
+      const currentPrefix = hasLRSuffix ? currentClean.slice(0, -1).join('_') : currentClean.join('_');
+      const currentAssetColorRaw = currentClean.filter(p => !surfaceWords.includes(p)).join('_');
       const currentAssetColorNorm = normalize(currentAssetColorRaw);
 
       const possibleAssets = selectedProduct.components[cName];
@@ -650,29 +675,42 @@ function App() {
       // 1. Cerchiamo il gemello con PREFISSO IDENTICO + Superficie Target
       // 2. Se non esiste, cerchiamo per COLORE RAW + Superficie Target
       // 3. Se non esiste, cerchiamo per COLORE NORM + Superficie Target
+      console.log(`[SmartSwitch] Component: ${cName}, Current: ${asset.name}, Prefix: ${currentPrefix}, ColorRaw: ${currentAssetColorRaw}`);
+
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
-        const aPrefix = ['L', 'A'].includes(aParts[aParts.length - 1]) ? aParts.slice(0, -1).join('_') : aParts.join('_');
+        const aClean = aParts.filter(p => !knownPrefixes.includes(p));
+        const aPrefix = ['L', 'A'].includes(aParts[aParts.length - 1]) ? aClean.slice(0, -1).join('_') : aClean.join('_');
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
-        return aPrefix === currentPrefix && hasSurface && a.path !== asset.path;
+        const match = aPrefix === currentPrefix && hasSurface && a.path !== asset.path;
+        if (match) console.log(`[SmartSwitch] Found by Prefix: ${aName}`);
+        return match;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
-        const aColorRaw = aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+        const aClean = aParts.filter(p => !knownPrefixes.includes(p));
+        const aColorRaw = aClean.filter(p => !surfaceWords.includes(p)).join('_');
+        const aColorNorm = normalize(aColorRaw);
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
-        return aColorRaw === currentAssetColorRaw && hasSurface && a.path !== asset.path;
+        const match = (aColorRaw === currentAssetColorRaw || aColorNorm === currentAssetColorNorm) && hasSurface && a.path !== asset.path;
+        if (match) console.log(`[SmartSwitch] Found by Color: ${aName} (Target: ${currentAssetColorRaw}/${currentAssetColorNorm})`);
+        return match;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
-        const aColorNorm = normalize(aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_'));
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
-        return aColorNorm === currentAssetColorNorm && hasSurface && a.path !== asset.path;
+        const isColorMatch = aParts.some(p => normalize(p) === currentAssetColorNorm);
+        const match = isColorMatch && hasSurface && a.path !== asset.path;
+        if (match) console.log(`[SmartSwitch] Found by Fuzzy Match: ${aName}`);
+        return match;
       });
 
       if (target) {
         newSelections[cName] = target;
         switchedCount++;
+      } else {
+        console.warn(`[SmartSwitch] No target found for ${cName} (${asset.name}) towards ${globalTarget}`);
       }
     });
 
@@ -953,7 +991,15 @@ function App() {
           <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg">P</div>
           <h1 className="text-xs font-black uppercase tracking-tighter whitespace-nowrap">Studio Hub</h1>
         </div>
-        {products.map(product => (
+        {products.sort((a, b) => {
+          const order = ["PROFUMATORE", "MINI", "CANDELA 220", "CANDELA 450", "VASO", "LAMPADA"];
+          const idxA = order.indexOf(a.name.toUpperCase());
+          const idxB = order.indexOf(b.name.toUpperCase());
+          if (idxA === -1 && idxB === -1) return a.name.localeCompare(b.name);
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        }).map(product => (
           <button
             key={product.id}
             onClick={() => setSelectedProductId(product.id)}
@@ -1011,7 +1057,7 @@ function App() {
                 const f = (a.folder || '').toUpperCase();
                 const n = a.name.toUpperCase();
                 if (f.includes('LISC') || n.includes('_L')) return 'LISCIO';
-                if (f.includes('AMM') || n.includes('_A')) return 'AMMACCATO';
+                if (f.includes('AMM') || n.includes('_A') || n.includes('_M')) return 'AMMACCATO';
                 return null;
               });
               
@@ -1020,7 +1066,7 @@ function App() {
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
               const sName = (selectedAsset?.name || '').toUpperCase();
-              const selectionCategory = (sFolder.includes('LISC') || sName.includes('_L')) ? 'LISCIO' : ((sFolder.includes('AMM') || sName.includes('_A')) ? 'AMMACCATO' : '');
+              const selectionCategory = (sFolder.includes('LISC') || sName.includes('_L')) ? 'LISCIO' : ((sFolder.includes('AMM') || sName.includes('_A') || sName.includes('_M')) ? 'AMMACCATO' : '');
               
               // Se non c'è una tab attiva impostata, usiamo la categoria della selezione attuale
               const currentTab = activeTabs[cName] || selectionCategory || categories[0];
