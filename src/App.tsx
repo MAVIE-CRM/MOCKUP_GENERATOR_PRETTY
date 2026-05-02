@@ -635,7 +635,6 @@ function App() {
     // 2. Applichiamo la direzione con logica intelligente
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
-      const name = asset.name.toUpperCase();
       const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM'];
       
       const currentAssetParts = asset.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
