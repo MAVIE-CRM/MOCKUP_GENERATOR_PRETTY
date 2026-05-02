@@ -441,9 +441,7 @@ function App() {
     const fullColorName = cleanParts.filter(p => !surfaceWords.includes(p.toUpperCase())).join('_') || name;
     const normColor = normalize(fullColorName);
     
-    const macroCategory = getProductMacroCategory();
     const isAmmaccato = name.includes('_A') || fullPath.includes('AMM') || name.includes('AMMACCATA') || name.includes('AMMACCATO');
-    const targetSuffix = isAmmaccato ? '_A' : '_L';
 
     setSelections(prev => {
       const newSelections = { ...prev };
