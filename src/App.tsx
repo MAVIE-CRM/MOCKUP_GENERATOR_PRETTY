@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ShieldCheck, ArrowRight, History, Ruler, Save, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ShieldCheck, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -112,13 +112,12 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [smartFitStatus, setSmartFitStatus] = useState('');
 
-  // STATO PER IL CALIBRATION ENGINE
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibRect, setCalibRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [showDebugGrid, setShowDebugGrid] = useState(false);
-  const [isGlobalLocked, setIsGlobalLocked] = useState(true); // Default attivo per comodità
+  const [isGlobalLocked, setIsGlobalLocked] = useState(true);
   const [syncWarnings, setSyncWarnings] = useState<Record<string, string>>({});
   const [savedCalibrations, setSavedCalibrations] = useState<Record<string, { x: number, y: number, w: number, h: number }>>(() => {
     const saved = localStorage.getItem('pretty_calibrations');
@@ -127,14 +126,177 @@ function App() {
 
   const [isFloraRunning, setIsFloraRunning] = useState(false);
   const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
+  const [isBulkRunning, setIsBulkRunning] = useState(false);
+  const [bulkQueue, setBulkQueue] = useState<{ id: string, surface: string }[]>([]);
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const selectionsRef = useRef(selections);
+  useEffect(() => { selectionsRef.current = selections; }, [selections]);
+
+  const filteredBulkQueue = useMemo(() => {
+    const seen = new Set();
+    return bulkQueue.filter(q => {
+      const p = products.find(prod => prod.id === q.id);
+      if (!p) return false;
+      const key = `${p.name.trim().toUpperCase()}_${q.surface}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [bulkQueue, products]);
+
   const [floraStatus, setFloraStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
 
-  // Sincronizzazione automatica della griglia SOLO all'apertura o al cambio prodotto
+  const handleToggleBulk = (id: string, surface: string, selected: boolean) => {
+    if (selected) {
+      setBulkQueue(prev => {
+        if (prev.some(q => q.id === id && q.surface === surface)) return prev;
+        return [...prev, { id, surface }];
+      });
+    } else {
+      setBulkQueue(prev => prev.filter(q => !(q.id === id && q.surface === surface)));
+    }
+  };
+
+  const runBulkExport = async () => {
+    if (filteredBulkQueue.length === 0) return;
+    if (!selectedGraphic) return;
+    setIsBulkRunning(true);
+    const originalProductId = selectedProductId;
+
+    try {
+      setBulkTotal(filteredBulkQueue.length);
+      setBulkProgress(0);
+      
+      for (let i = 0; i < filteredBulkQueue.length; i++) {
+        const { id, surface } = filteredBulkQueue[i];
+        setBulkProgress(i + 1);
+        
+        // Seleziona il prodotto
+        setSelectedProductId(id);
+        
+        // Forza la superficie se specificata (LISCIO/AMMACCATO)
+        if (surface !== 'DEFAULT') {
+          const targetIsAmmaccato = surface === 'AMMACCATO';
+          const product = products.find(p => p.id === id);
+          if (product) {
+            const newProductSelections = { ...(selections[id] || {}) };
+            let changed = false;
+
+            Object.entries(product.components).forEach(([cName, assets]) => {
+              const currentAsset = newProductSelections[cName];
+              if (!currentAsset) return;
+
+              // Verifichiamo se questo specifico componente ha varianti L/A
+              const hasLVariants = assets.some(a => {
+                const n = a.name.toUpperCase();
+                return n.includes('_L') || a.fullPath.toUpperCase().includes('LISC');
+              });
+              const hasAVariants = assets.some(a => {
+                const n = a.name.toUpperCase();
+                return n.includes('_A') || a.fullPath.toUpperCase().includes('AMM');
+              });
+
+              // Se il componente non ha varianti (es. Stick, Tappi specifici), non cambiamo la selezione dell'utente
+              if (!hasLVariants || !hasAVariants) return;
+
+              const targetSuffix = targetIsAmmaccato ? '_A' : '_L';
+              const targetKey = targetIsAmmaccato ? 'AMM' : 'LISC';
+              
+              const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM'];
+              const knownPrefixes = ['PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4', 'BOTTIGLIA', 'FLACONE', 'CONTENITORE', 'JAR', 'BARATTOLO', 'VASO', 'BODY', 'STRUTTURA'];
+              
+              const currentAssetParts = currentAsset.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
+              const hasLRSuffix = ['L', 'A'].includes(currentAssetParts[currentAssetParts.length - 1]);
+              const currentClean = currentAssetParts.filter(p => !knownPrefixes.includes(p));
+              const currentPrefix = hasLRSuffix ? currentClean.slice(0, -1).join('_') : currentClean.join('_');
+              // Isolamento del colore puro: rimuoviamo sia i prefissi noti che i termini di superficie
+              const currentAssetColorNorm = normalize(currentAssetParts.filter(p => !surfaceWords.includes(p) && !knownPrefixes.includes(p)).join('_'));
+
+              const match = assets.find(a => {
+                const aName = a.name.toUpperCase();
+                const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+                const aClean = aParts.filter(p => !knownPrefixes.includes(p));
+                const aPrefix = ['L', 'A'].includes(aParts[aParts.length - 1]) ? aClean.slice(0, -1).join('_') : aClean.join('_');
+                const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
+                return aPrefix === currentPrefix && hasSurface;
+              }) || assets.find(a => {
+                const aName = a.name.toUpperCase();
+                const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+                const aClean = aParts.filter(p => !knownPrefixes.includes(p));
+                const aColorNorm = normalize(aClean.filter(p => !surfaceWords.includes(p) && !knownPrefixes.includes(p)).join('_'));
+                const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
+                return aColorNorm === currentAssetColorNorm && hasSurface;
+              });
+
+              if (match && match.path !== currentAsset.path) {
+                newProductSelections[cName] = match;
+                changed = true;
+              }
+            });
+
+            if (changed) {
+              setSelections(prev => ({ ...prev, [id]: newProductSelections }));
+            }
+          }
+        }
+
+        // Attendiamo che il canvas si aggiorni (2.5s per sicurezza)
+        await new Promise(r => setTimeout(r, 2500)); 
+        
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          const product = products.find(p => p.id === id);
+          // Usiamo il ref per avere le selezioni AGGIORNATE dopo il cambio superficie
+          const currentSelections = selectionsRef.current[id] || {};
+          
+          // Identifichiamo il componente principale (Corpo/Vaso) per il naming
+          const mainCompName = product ? Object.keys(product.components).find(c => {
+            const n = c.toUpperCase();
+            return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
+                   n.includes('PLS') || n.includes('PLL') || n.includes('PLSM') || 
+                   n.includes('PLV') || n.includes('LAMPADA') || n.includes('STRUTTURA') ||
+                   n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
+                   n.includes('BODY');
+          }) || Object.keys(product.components)[0] : '';
+
+          const asset = currentSelections[mainCompName];
+          const assetBaseName = asset ? asset.name.split('.')[0] : (product?.name || id);
+          const graphicName = selectedGraphic.name.split('.')[0];
+          
+          // Costruiamo il nome file: NOME_ASSET_NOME_GRAFICA
+          const fileName = `${assetBaseName}_${graphicName}.jpg`.toUpperCase();
+          
+          const link = document.createElement('a');
+          link.download = fileName;
+          link.href = canvas.toDataURL('image/jpeg', 0.95);
+          link.click();
+
+          saveToHistory({
+            id: Math.random().toString(36).substring(7),
+            timestamp: Date.now(),
+            fileName: fileName,
+            productName: product?.name || id,
+            graphicName: graphicName,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Errore durante il bulk export:", err);
+    } finally {
+      setSelectedProductId(originalProductId);
+      setIsBulkRunning(false);
+      setIsBulkExportOpen(false);
+      confetti({ particleCount: 200, spread: 100 });
+    }
+  };
+
   useEffect(() => {
     if (isCalibrating && selectedProduct && !isDrawing) {
       const getProductMacroCategoryLocal = () => {
@@ -179,7 +341,7 @@ function App() {
   }, []);
 
   const saveToHistory = (item: DownloadHistoryItem) => {
-    const newHistory = [item, ...history].slice(0, 50); // Teniamo gli ultimi 50
+    const newHistory = [item, ...history].slice(0, 50);
     setHistory(newHistory);
     localStorage.setItem('pretty_history', JSON.stringify(newHistory));
   };
@@ -199,7 +361,6 @@ function App() {
         'x-api-key': pass 
       };
 
-      // Avviamo entrambi i fetch in parallelo per massima velocità
       const [pRes, gRes] = await Promise.all([
         fetch(config.endpoints.products, { headers: authHeaders }),
         fetch(config.endpoints.grafiche, { headers: authHeaders })
@@ -220,27 +381,32 @@ function App() {
         gRes.json()
       ]);
       
-      // Password corretta!
       setIsAuthenticated(true);
       localStorage.setItem('pretty_auth', pass);
       setLoginError(false);
       setIsLoggingIn(false);
 
-      // Setup Prodotti
-      setProducts(pData);
-      if (pData.length > 0) {
-        // Cerchiamo il primo prodotto che NON sia interamente AI (basato sul primo asset del primo componente)
-        const defaultProduct = pData.find(p => {
+      // Deduplica i prodotti per nome (case-insensitive) per evitare doppioni nel catalogo
+      const uniquePData = pData.reduce((acc, current) => {
+        const name = current.name.trim().toUpperCase();
+        if (!acc.find(p => p.name.trim().toUpperCase() === name)) {
+          acc.push(current);
+        }
+        return acc;
+      }, [] as Product[]);
+
+      setProducts(uniquePData);
+      if (uniquePData.length > 0) {
+        const defaultProduct = uniquePData.find(p => {
           const firstComp = Object.values(p.components)[0]?.[0];
           return !firstComp?.folder?.toUpperCase().includes('AI');
-        }) || pData[0];
+        }) || uniquePData[0];
         setSelectedProductId(defaultProduct.id);
         const initialSelections: Record<string, Record<string, ComponentAsset>> = {};
-        pData.forEach(p => {
+        uniquePData.forEach(p => {
           initialSelections[p.id] = {};
           Object.entries(p.components).forEach(([cName, assets]) => {
             if (assets.length > 0) {
-              // Cerchiamo il primo asset che NON sia in una sottocartella "AI"
               const defaultAsset = assets.find(a => !(a.folder || '').toUpperCase().includes('AI')) || assets[0];
               initialSelections[p.id][cName] = defaultAsset;
             }
@@ -249,7 +415,6 @@ function App() {
         setSelections(initialSelections);
       }
 
-      // Setup Grafiche
       setGraficheList(gData);
       if (gData.length > 0) {
         setSelectedGraphic(gData[0]);
@@ -261,10 +426,6 @@ function App() {
       setIsLoggingIn(false);
     }
   };
-
-
-  // Rimosso effetto di emulazione automatica (troppo invadente)
-  // Il Lucchetto ora agisce solo durante la selezione manuale degli asset
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
@@ -278,7 +439,6 @@ function App() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve('');
         
-        // Usiamo una dimensione piccola per fare una media veloce e pulita
         const SIZE = 20;
         canvas.width = SIZE;
         canvas.height = SIZE;
@@ -289,13 +449,10 @@ function App() {
 
         for (let i = 0; i < data.length; i += 4) {
           const alpha = data[i + 3];
-          // Consideriamo solo pixel abbastanza opachi e non troppo scuri (per evitare ombre)
           if (alpha > 50) {
             const pr = data[i];
             const pg = data[i+1];
             const pb = data[i+2];
-            
-            // Filtro per evitare il nero assoluto o il bianco puro se possibile
             const brightness = (pr * 299 + pg * 587 + pb * 114) / 1000;
             if (brightness > 10 && brightness < 245) {
               r += pr;
@@ -308,10 +465,8 @@ function App() {
 
         if (count > 0) {
           const finalColor = `rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`;
-          console.log(`[ColorEye] Dominante per ${fileName}: ${finalColor}`);
           resolve(finalColor);
         } else {
-          // Se tutto è filtrato, prendiamo il primo pixel opaco che troviamo
           for (let i = 0; i < data.length; i += 4) {
             if (data[i+3] > 10) {
               resolve(`rgb(${data[i]},${data[i+1]},${data[i+2]})`);
@@ -321,10 +476,7 @@ function App() {
           resolve('');
         }
       };
-      img.onerror = () => {
-        console.error(`[ColorEye] Errore caricamento: ${url}`);
-        resolve('');
-      };
+      img.onerror = () => resolve('');
     });
   };
 
@@ -363,7 +515,6 @@ function App() {
     extract();
   }, [selectedProduct, selectedProductId]);
 
-  // Pre-caricamento intelligente degli asset
   useEffect(() => {
     if (!selectedProduct) return;
     
@@ -376,7 +527,6 @@ function App() {
       });
     };
     
-    // Piccolo delay per non rallentare l'avvio iniziale
     const timer = setTimeout(preload, 1000);
     return () => clearTimeout(timer);
   }, [selectedProduct]);
@@ -385,7 +535,6 @@ function App() {
     const name = asset.name.toUpperCase();
     const label = formatLabel(asset.name);
     
-    // Scansione intelligente del nome per trovare il colore
     const cleanName = name.replace(/\..+$/, '').replace(/^PLS_/i, '');
     const parts = cleanName.split(/[_\s-]/).filter(p => p);
     const foundCode = parts.find(p => EXTENDED_MAP[p]);
@@ -394,16 +543,11 @@ function App() {
     const colorKey = `${selectedProductId}_${asset.path}`;
     const pixelColor = assetColors[colorKey];
     
-    // Fallback: se non abbiamo ancora il pixelColor, usiamo la mappa
     const mapColor = EXTENDED_MAP[colorCode] || 
                      Object.keys(EXTENDED_MAP).find(k => label.includes(k) && k.length > 2 && label.includes(k)) && EXTENDED_MAP[Object.keys(EXTENDED_MAP).find(k => label.includes(k) && k.length > 2)!] ||
                      EXTENDED_MAP[label];
     
-    // Se pixelColor è una stringa vuota o null, forza l'uso di mapColor
     const bgColor = (pixelColor && pixelColor !== '') ? pixelColor : mapColor;
-    
-    // Log di monitoraggio per ogni icona
-    console.log(`[IconStyle] ${name} | Code: ${colorCode} | Pixel: ${pixelColor || 'N/A'} | Map: ${mapColor || 'N/A'} | Final: ${bgColor || 'GRAY'}`);
     
     if (bgColor) {
       let r = 0, g = 0, b = 0;
@@ -432,7 +576,6 @@ function App() {
     const name = asset.name.toUpperCase();
     const fullPath = asset.fullPath.toUpperCase();
     
-    // 1. ESTRAZIONE IDENTITÀ INTELLIGENTE
     const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
     const knownPrefixes = ['PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
     
@@ -474,7 +617,6 @@ function App() {
             const productAssets = p.components[pCName];
             const pTargetSuffix = isAmmaccato ? '_A' : '_L';
             
-            // CERCHIAMO IL MATCH USANDO IL COLORE NORMALIZZATO (Identità Esatta)
             let match = productAssets.find(a => {
               const aName = a.name.toUpperCase();
               const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
@@ -485,12 +627,10 @@ function App() {
               return (aColorRaw === fullColorName || aColorNorm === normColor) && hasSurface;
             });
 
-            // Se non lo trovo con la superficie o posizione esatta, cerco ovunque nel nome (per LAMPADE/STRUTTURA)
             if (!match) {
               match = productAssets.find(a => {
                 const aName = a.name.toUpperCase();
                 const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
-                // Cerchiamo se una qualsiasi parte del nome (normalizzata) corrisponde al colore target
                 return aParts.some(part => normalize(part) === normColor);
               });
             }
@@ -510,8 +650,6 @@ function App() {
                 newWarnings[p.id] = `⚠️ Match Parziale per ${p.name}: superficie non trovata.`;
               }
             } else {
-              // 3. Colore Simile (Fuzzy)
-              // Se non abbiamo trovato il colore normalizzato, cerchiamo per parole chiave base
               const colors = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA', 'SALVIA', 'GRAFITE', 'BORDEAUX', 'CILIEGIA', 'COBALTO', 'CYTRON', 'MAGENTA', 'LILLA'];
               const baseColor = colors.find(c => normColor.includes(c));
 
@@ -557,10 +695,6 @@ function App() {
     const baseColorKeyword = colorsList.find(c => normColor.includes(c));
     setMasterConfig({ colorCode: baseColorKeyword || 'DEFAULT', isAmmaccato });
   };
-
-
-
-
 
   const getUniqueAssets = (assets: ComponentAsset[]) => {
     const seen = new Set();
@@ -648,12 +782,10 @@ function App() {
     const newSelections = { ...currentSelections };
     let switchedCount = 0;
 
-    // 1. Determiniamo la direzione basandoci sulla Master Config
     const globalTarget: 'LISCIO' | 'AMMACCATO' = masterConfig.isAmmaccato ? 'LISCIO' : 'AMMACCATO';
     const targetSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
     const targetKey = globalTarget === 'AMMACCATO' ? 'AMM' : 'LISC';
 
-    // 2. Applichiamo la direzione con logica intelligente
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
       const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM', 'PLV', 'PLC2', 'PLC4'];
@@ -669,21 +801,13 @@ function App() {
       const possibleAssets = selectedProduct.components[cName];
       if (!possibleAssets) return;
 
-      // Logica di Reversibilità Totale:
-      // 1. Cerchiamo il gemello con PREFISSO IDENTICO + Superficie Target
-      // 2. Se non esiste, cerchiamo per COLORE RAW + Superficie Target
-      // 3. Se non esiste, cerchiamo per COLORE NORM + Superficie Target
-      console.log(`[SmartSwitch] Component: ${cName}, Current: ${asset.name}, Prefix: ${currentPrefix}, ColorRaw: ${currentAssetColorRaw}`);
-
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
         const aClean = aParts.filter(p => !knownPrefixes.includes(p));
         const aPrefix = ['L', 'A'].includes(aParts[aParts.length - 1]) ? aClean.slice(0, -1).join('_') : aClean.join('_');
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
-        const match = aPrefix === currentPrefix && hasSurface && a.path !== asset.path;
-        if (match) console.log(`[SmartSwitch] Found by Prefix: ${aName}`);
-        return match;
+        return aPrefix === currentPrefix && hasSurface && a.path !== asset.path;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
@@ -691,24 +815,18 @@ function App() {
         const aColorRaw = aClean.filter(p => !surfaceWords.includes(p)).join('_');
         const aColorNorm = normalize(aColorRaw);
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
-        const match = (aColorRaw === currentAssetColorRaw || aColorNorm === currentAssetColorNorm) && hasSurface && a.path !== asset.path;
-        if (match) console.log(`[SmartSwitch] Found by Color: ${aName} (Target: ${currentAssetColorRaw}/${currentAssetColorNorm})`);
-        return match;
+        return (aColorRaw === currentAssetColorRaw || aColorNorm === currentAssetColorNorm) && hasSurface && a.path !== asset.path;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
         const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
         const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
         const isColorMatch = aParts.some(p => normalize(p) === currentAssetColorNorm);
-        const match = isColorMatch && hasSurface && a.path !== asset.path;
-        if (match) console.log(`[SmartSwitch] Found by Fuzzy Match: ${aName}`);
-        return match;
+        return isColorMatch && hasSurface && a.path !== asset.path;
       });
 
       if (target) {
         newSelections[cName] = target;
         switchedCount++;
-      } else {
-        console.warn(`[SmartSwitch] No target found for ${cName} (${asset.name}) towards ${globalTarget}`);
       }
     });
 
@@ -716,7 +834,6 @@ function App() {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
     }
     
-    // Toggle sempre lo stato globale per coerenza del pulsante
     setMasterConfig(prev => ({ ...prev, isAmmaccato: globalTarget === 'AMMACCATO' }));
     
     setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
@@ -727,7 +844,6 @@ function App() {
   const getProductMacroCategory = () => {
     if (!selectedProduct) return 'DEFAULT';
     
-    // Prendiamo il percorso della cartella del primo componente per capire la macro-categoria
     const firstComp = Object.values(selectedProduct.components)[0]?.[0];
     const folder = firstComp ? firstComp.folder.toUpperCase() : '';
     const name = selectedProduct.name.toUpperCase();
@@ -743,24 +859,18 @@ function App() {
   };
 
   const handleCalibrationSave = () => {
-    console.log("[Calibration] Avvio salvataggio...");
-    
     if (!calibRect || calibRect.w < 1 || calibRect.h < 1) {
       alert("ERRORE: La griglia è troppo piccola o non disegnata bene. Riprova a trascinare il mouse!");
       return;
     }
     
     const cat = getProductMacroCategory();
-    alert("Categoria rilevata: " + cat);
-    
     try {
       const updated = { ...savedCalibrations, [cat]: calibRect, 'GLOBAL': calibRect };
       localStorage.setItem('pretty_calibrations', JSON.stringify(updated));
       setSavedCalibrations(updated);
-      
-      alert("SALVATO CON SUCCESSO! ✅ Ora puoi provare il tasto FIT.");
       setIsCalibrating(false);
-      setCalibRect(null); // Reset dopo il salvataggio
+      setCalibRect(null);
       setSmartFitStatus('Griglia Salvata! ✅');
       setTimeout(() => setSmartFitStatus(''), 2000);
     } catch (err) {
@@ -770,7 +880,7 @@ function App() {
 
   const handleCalibrationToggle = () => {
     if (!isCalibrating) {
-      setCalibRect(null); // Reset per forzare il ricaricamento dal salvataggio
+      setCalibRect(null);
       setIsCalibrating(true);
     } else {
       setIsCalibrating(false);
@@ -800,7 +910,6 @@ function App() {
       getDimensions(selectedGraphic.path).then(({w, h}) => {
         const assetRatio = h / w;
         
-        // 1. DIMENSIONI BERSAGLIO (Griglia Rossa) con margine di sicurezza del 5%
         const safetyMargin = 0.95;
         const targetW = (saved.w / 100) * 1000 * safetyMargin;
         const targetH = (saved.h / 100) * 1250 * safetyMargin;
@@ -812,18 +921,12 @@ function App() {
           c.keywords.some(k => pName.includes(k))
         ) || DEFAULT_CALIBRATION;
 
-        // 2. CALCOLO SCALA PER LARGHEZZA
         const baseW = calibration.baseWidth;
         const scaleW = (targetW / baseW) * 100;
-
-        // 3. CALCOLO SCALA PER ALTEZZA
         const baseH = baseW * assetRatio;
         const scaleH = (targetH / baseH) * 100;
 
-        // 4. LA REGOLA DEL 2 SU 2: Scegliamo la scala più piccola tra le due
         const finalScale = Math.round(Math.min(scaleW, scaleH));
-        
-        // 5. POSIZIONAMENTO CHIRURGICO
         const jarCenterY = 1250 * calibration.centerY;
         const finalY = Math.round(targetCenterY - jarCenterY);
         const finalX = Math.round(targetCenterX - 500);
@@ -838,7 +941,6 @@ function App() {
     }
   };
 
-  // AUTOMAZIONE: Smart Auto-Fit al cambio grafica o prodotto
   useEffect(() => {
     if (selectedGraphic && selectedProduct && !isCalibrating && !isDrawing) {
       handleSmartFit();
@@ -847,47 +949,51 @@ function App() {
 
   const handleExport = () => {
     setIsExporting(true);
-    const canvas = document.querySelector('canvas');
-    if (canvas && selectedProduct) {
-      // Troviamo il nome dell'asset principale selezionato (es. PLS_NERO_L)
-      const mainCompName = Object.keys(selectedProduct.components).find(c => {
-        const n = c.toUpperCase();
-        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
-               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
-               n.includes('LAMPADA') || n.includes('STRUTTURA');
-      }) || Object.keys(selectedProduct.components)[0];
+    try {
+      const canvas = document.querySelector('canvas');
+      if (canvas && selectedProduct) {
+        const mainCompName = Object.keys(selectedProduct.components).find(c => {
+          const n = c.toUpperCase();
+          return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
+                 n.includes('PLS') || n.includes('PLL') || n.includes('PLSM') || 
+                 n.includes('PLV') || n.includes('LAMPADA') || n.includes('STRUTTURA') ||
+                 n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
+                 n.includes('BODY');
+        }) || Object.keys(selectedProduct.components)[0];
 
-      const asset = selections[selectedProductId]?.[mainCompName];
-      const productName = asset ? asset.name.split('.')[0] : selectedProductId;
-      const graphicName = selectedGraphic ? selectedGraphic.name.split('.')[0] : 'default';
-      
-      const fileName = `${productName}_${graphicName}.jpg`;
+        const asset = selections[selectedProductId]?.[mainCompName];
+        const assetBaseName = asset ? asset.name.split('.')[0] : selectedProductId;
+        const graphicName = selectedGraphic ? selectedGraphic.name.split('.')[0] : 'default';
+        const pName = selectedProduct.name || selectedProductId;
+        
+        const fileName = `${assetBaseName}_${graphicName}.jpg`.toUpperCase();
 
-      const link = document.createElement('a');
-      link.download = fileName;
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      link.href = dataUrl;
-      link.click();
+        const link = document.createElement('a');
+        link.download = fileName;
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+        link.href = dataUrl;
+        link.click();
 
-      // Salviamo nella cronologia
-      saveToHistory({
-        id: Math.random().toString(36).substring(7),
-        timestamp: Date.now(),
-        fileName,
-        productName,
-        graphicName,
-        // Non salviamo il dataUrl intero per non saturare il localStorage
-      });
+        saveToHistory({
+          id: Math.random().toString(36).substring(7),
+          timestamp: Date.now(),
+          fileName,
+          productName: pName,
+          graphicName,
+        });
 
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
+        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
+      }
+    } catch (err) {
+      console.error("Export error:", err);
+    } finally {
+      setTimeout(() => setIsExporting(false), 1000);
     }
-    setTimeout(() => setIsExporting(false), 1000);
   };
 
   if (!isAuthenticated) {
     return (
       <div className="h-screen w-full bg-slate-950 flex items-center justify-center p-6 md:p-10 font-sans relative overflow-hidden">
-        {/* Animated Background Elements */}
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 blur-[120px] rounded-full animate-pulse" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 blur-[120px] rounded-full animate-pulse" />
         
@@ -917,15 +1023,6 @@ function App() {
                   className={`w-full py-4 px-6 bg-white/5 border ${loginError ? 'border-red-500/50 text-red-200' : 'border-white/10 text-white'} rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-600/50 focus:border-indigo-600 transition-all text-center font-bold tracking-widest placeholder:text-white/10`}
                   autoFocus
                 />
-                {loginError && (
-                  <motion.p 
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-red-500 text-[10px] font-black uppercase mt-2 tracking-widest"
-                  >
-                    Password Errata
-                  </motion.p>
-                )}
               </div>
               
               <button
@@ -944,11 +1041,6 @@ function App() {
                 )}
               </button>
             </form>
-            
-            <div className="mt-10 flex items-center justify-center gap-2 text-white/20">
-              <ShieldCheck size={14} />
-              <span className="text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted Session</span>
-            </div>
           </div>
         </motion.div>
       </div>
@@ -963,10 +1055,7 @@ function App() {
             <AlertCircle size={32} />
           </div>
           <h2 className="text-xl font-black text-white mb-4 uppercase tracking-tighter">Errore di Connessione</h2>
-          <p className="text-white/40 text-xs leading-relaxed mb-8">
-            Impossibile connettersi al server. Verifica che la password sia corretta e che il server Railway sia attivo.<br/>
-            <span className="opacity-50 mt-2 block">{connectionError}</span>
-          </p>
+          <p className="text-white/40 text-xs leading-relaxed mb-8">{connectionError}</p>
           <button
             onClick={() => {
               localStorage.removeItem('pretty_auth');
@@ -983,7 +1072,6 @@ function App() {
 
   return (
     <div className="h-screen w-full bg-slate-950 text-white flex flex-col overflow-hidden font-sans">
-      {/* Product Switcher Bar */}
       <div className="h-16 bg-slate-900 border-b border-white/10 flex items-center px-6 gap-4 shrink-0 overflow-x-auto no-scrollbar shadow-2xl z-20">
         <div className="flex items-center gap-3 pr-6 border-r border-white/5 mr-2">
           <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg">P</div>
@@ -1009,18 +1097,13 @@ function App() {
       </div>
 
       <div className="flex flex-1 flex-col md:flex-row overflow-hidden">
-        {/* Sidebar */}
         <div className="w-full md:w-[320px] h-full bg-slate-900 border-r border-white/10 flex flex-col overflow-hidden shrink-0 shadow-2xl">
           <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
-            {/* Dynamic Product Components */}
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               if (!assets || assets.length === 0) return null;
-
-              // Determiniamo se il componente usa la logica LISCIO/AMMACCATO (Escludiamo MINI e STICK che devono essere sempre liberi)
               const upCName = cName.toUpperCase();
               const upPName = selectedProduct.name.toUpperCase();
               const isExcluded = upCName.includes('STICK') || upCName.includes('MINI') || upPName.includes('MINI');
-
               const hasMasterFolders = !isExcluded && assets.some(a => {
                 const f = (a.folder || '').toUpperCase();
                 const n = a.name.toUpperCase();
@@ -1028,7 +1111,6 @@ function App() {
               });
 
               if (!hasMasterFolders) {
-                // Caso semplice: Mostriamo tutto in una lista unica (es. STICK, MINI)
                 const allUnique = getUniqueAssets(assets);
                 return (
                   <section key={cName} className="space-y-4">
@@ -1039,7 +1121,6 @@ function App() {
                           key={asset.path}
                           onClick={() => handleSelection(cName, asset)}
                           style={getAssetStyle(asset)}
-                          title={formatLabel(asset.name)}
                           className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
                         >
                           {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
@@ -1050,7 +1131,6 @@ function App() {
                 );
               }
 
-              // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
               const rawCategories: (string | null)[] = assets.map(a => {
                 const f = (a.folder || '').toUpperCase();
                 const n = a.name.toUpperCase();
@@ -1060,41 +1140,23 @@ function App() {
               });
               
               const categories = Array.from(new Set(rawCategories)).filter((c): c is string => c !== null).sort();
-
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
               const sName = (selectedAsset?.name || '').toUpperCase();
               const selectionCategory = (sFolder.includes('LISC') || sName.includes('_L')) ? 'LISCIO' : ((sFolder.includes('AMM') || sName.includes('_A') || sName.includes('_M')) ? 'AMMACCATO' : '');
-              
-              // Se non c'è una tab attiva impostata, usiamo la categoria della selezione attuale
               const currentTab = activeTabs[cName] || selectionCategory || categories[0];
 
               return (
                 <section key={cName} className="space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                    <button 
-                      onClick={handleSmartSwitch}
-                      className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
-                    >
-                      Switch All
-                    </button>
+                    <button onClick={handleSmartSwitch} className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20">Switch All</button>
                   </div>
-
-                  {/* Tab Switcher */}
                   <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/5">
                     {categories.map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => setActiveTabs(prev => ({ ...prev, [cName]: cat }))}
-                        className={`flex-1 py-2 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${currentTab === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/30 hover:text-white hover:bg-white/5'}`}
-                      >
-                        {cat}
-                      </button>
+                      <button key={cat} onClick={() => setActiveTabs(prev => ({ ...prev, [cName]: cat }))} className={`flex-1 py-2 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${currentTab === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/30 hover:text-white hover:bg-white/5'}`}>{cat}</button>
                     ))}
                   </div>
-
-                  {/* Tab Content */}
                   {categories.filter(cat => cat === currentTab).map(cat => {
                     const targetKey = cat === 'LISCIO' ? 'LISC' : 'AMM';
                     const targetSuffix = cat === 'LISCIO' ? '_L' : '_A';
@@ -1105,45 +1167,37 @@ function App() {
                       return f.includes(targetKey) || n.includes(targetSuffix);
                     });
 
-                    if (catAssets.length === 0) return (
-                      <div key={cat} className="p-8 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
-                        <p className="text-[9px] font-bold text-white/20 uppercase">Nessuna variante {cat}</p>
-                      </div>
-                    );
+                    // Dividiamo tra asset "standard" e asset in "sottocartelle"
+                    const standardAssets: ComponentAsset[] = [];
+                    const subfolderGroups: Record<string, ComponentAsset[]> = {};
 
-                    const standardAssets = getUniqueAssets(catAssets.filter(a => {
+                    catAssets.forEach(a => {
                       const f = (a.folder || '').toUpperCase();
                       const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
                       const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                      return masterIdx === parts.length - 1;
-                    }));
+                      
+                      if (masterIdx === -1) {
+                        standardAssets.push(a);
+                      } else if (masterIdx === parts.length - 1) {
+                        standardAssets.push(a);
+                      } else {
+                        const subName = parts.slice(masterIdx + 1).join(' / ');
+                        if (!subfolderGroups[subName]) subfolderGroups[subName] = [];
+                        subfolderGroups[subName].push(a);
+                      }
+                    });
 
-                    const subFolders = Array.from(new Set(catAssets.filter(a => {
-                      const f = (a.folder || '').toUpperCase();
-                      const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                      const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                      return masterIdx !== -1 && masterIdx < parts.length - 1;
-                    }).map(a => {
-                      const f = (a.folder || '').toUpperCase();
-                      const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                      const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                      return parts[masterIdx + 1];
-                    }))).filter((s): s is string => s !== undefined && s !== null).sort();
+                    const uniqueStandard = getUniqueAssets(standardAssets);
 
                     return (
-                      <motion.div 
-                        key={cat}
-                        initial={{ opacity: 0, x: 10 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="space-y-4"
-                      >
+                      <motion.div key={cat} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                        {/* Asset principali */}
                         <div className="flex flex-wrap gap-2">
-                          {standardAssets.map((asset) => (
+                          {uniqueStandard.map((asset) => (
                             <button
                               key={asset.path}
                               onClick={() => handleSelection(cName, asset)}
                               style={getAssetStyle(asset)}
-                              title={formatLabel(asset.name)}
                               className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
                             >
                               {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
@@ -1151,28 +1205,24 @@ function App() {
                           ))}
                         </div>
 
-                        {subFolders.map(sub => {
-                          const subAssets = getUniqueAssets(catAssets.filter(a => (a.folder || '').toUpperCase().includes(sub)));
-                          if (subAssets.length === 0) return null;
-                          return (
-                            <div key={sub} className="space-y-3 pt-3 border-t border-white/5">
-                              <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">{sub} Edition</span>
-                              <div className="flex flex-wrap gap-2">
-                                {subAssets.map((asset) => (
-                                  <button
-                                    key={asset.path}
-                                    onClick={() => handleSelection(cName, asset)}
-                                    style={getAssetStyle(asset)}
-                                    title={formatLabel(asset.name)}
-                                    className={`w-9 h-9 rounded-full transition-all border-2 flex items-center justify-center text-[8px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                                  >
-                                    {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
-                                  </button>
-                                ))}
-                              </div>
+                        {/* Sottocartelle */}
+                        {Object.entries(subfolderGroups).map(([subName, subAssets]) => (
+                          <div key={subName} className="space-y-2 pt-2 border-t border-white/5">
+                            <p className="text-[8px] font-black uppercase tracking-widest text-white/40">{subName}</p>
+                            <div className="flex flex-wrap gap-2">
+                              {getUniqueAssets(subAssets).map((asset) => (
+                                <button
+                                  key={asset.path}
+                                  onClick={() => handleSelection(cName, asset)}
+                                  style={getAssetStyle(asset)}
+                                  className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                                >
+                                  {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
+                                </button>
+                              ))}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </motion.div>
                     );
                   })}
@@ -1180,48 +1230,48 @@ function App() {
               );
             })}
 
-            {/* Shared Graphics */}
-            <section className="pt-4 border-t border-white/5 space-y-3">
-              <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">Grafiche Universali</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={14} />
-                <input type="text" placeholder="Cerca design..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-[11px] outline-none focus:border-indigo-500/50 transition-all" />
-              </div>
-              <div className="space-y-1">
-                {Object.entries(groupedGrafiche).map(([folder, assets]) => (
-                  <div key={folder} className="space-y-1">
-                    <button onClick={() => toggleFolder(folder)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-all text-left group">
-                      {expandedFolders[folder] ? <ChevronDown size={14} className="text-indigo-400" /> : <ChevronRight size={14} className="text-white/20" />}
-                      <Folder size={14} className={expandedFolders[folder] ? "text-indigo-400" : "text-white/20 group-hover:text-white/40"} />
-                      <span className={`text-[10px] font-bold uppercase truncate tracking-tight ${expandedFolders[folder] ? "text-white" : "text-white/40"}`}>{folder}</span>
-                    </button>
-                    <AnimatePresence>
-                      {(expandedFolders[folder] || searchQuery.length > 0) && (
-                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="pl-4 space-y-1 border-l border-white/5 ml-2">
-                          {assets.map(asset => (
-                            <div key={asset.path} className="flex items-center gap-1 group/item">
-                              <button onClick={() => setSelectedGraphic(asset)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-medium text-left truncate transition-all ${selectedGraphic?.path === asset.path ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-500/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}>
-                                {formatLabel(asset.name)}
-                              </button>
-                              <a 
-                                href={asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="p-2 text-white/20 hover:text-indigo-400 opacity-0 group-hover/item:opacity-100 transition-all"
-                                title="Anteprima originale"
-                              >
-                                <Search size={14} />
-                              </a>
-                            </div>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
+          {/* Shared Graphics */}
+          <section className="pt-4 border-t border-white/5 space-y-3">
+            <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">Grafiche Universali</label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" size={14} />
+              <input type="text" placeholder="Cerca design..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-[11px] outline-none focus:border-indigo-500/50 transition-all" />
+            </div>
+            <div className="space-y-1">
+              {Object.entries(groupedGrafiche).map(([folder, assets]) => (
+                <div key={folder} className="space-y-1">
+                  <button onClick={() => toggleFolder(folder)} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition-all text-left group">
+                    {expandedFolders[folder] ? <ChevronDown size={14} className="text-indigo-400" /> : <ChevronRight size={14} className="text-white/20" />}
+                    <Folder size={14} className={expandedFolders[folder] ? "text-indigo-400" : "text-white/20 group-hover:text-white/40"} />
+                    <span className={`text-[10px] font-bold uppercase truncate tracking-tight ${expandedFolders[folder] ? "text-white" : "text-white/40"}`}>{folder}</span>
+                  </button>
+                  <AnimatePresence>
+                    {(expandedFolders[folder] || searchQuery.length > 0) && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="pl-4 space-y-1 border-l border-white/5 ml-2">
+                        {assets.map(asset => (
+                          <div key={asset.path} className="flex items-center gap-1 group/item">
+                            <button onClick={() => setSelectedGraphic(asset)} className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-medium text-left truncate transition-all ${selectedGraphic?.path === asset.path ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-500/5' : 'text-white/40 hover:text-white hover:bg-white/10'}`}>
+                              {formatLabel(asset.name)}
+                            </button>
+                            <a 
+                              href={asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="p-2 text-white/20 hover:text-indigo-400 opacity-0 group-hover/item:opacity-100 transition-all"
+                              title="Anteprima originale"
+                            >
+                              <Search size={14} />
+                            </a>
+                          </div>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
 
           <div className="p-5 border-t border-white/5 shrink-0 bg-slate-950/30">
             <button onClick={handleFloraGenerate} disabled={isFloraRunning} className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-indigo-500/20 active:scale-95">
@@ -1355,38 +1405,53 @@ function App() {
                   </AnimatePresence>
                 </div>
 
-                <button 
-                  onClick={handleExport} 
-                  disabled={isExporting || !selectedGraphic} 
-                  className="px-8 py-3 text-[10px] rounded-xl bg-black text-white font-black uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-black/20 disabled:opacity-30 disabled:grayscale disabled:hover:scale-100"
-                >
-                  <Download size={18} /> 
-                  <span className="hidden sm:inline">Export</span>
-                </button>
+                <div className="flex items-center bg-black rounded-xl overflow-hidden shadow-2xl shadow-black/20 h-[44px]">
+                  <button 
+                    onClick={() => setIsBulkExportOpen(true)} 
+                    disabled={isExporting || isBulkRunning || !selectedGraphic} 
+                    className="px-6 h-full text-[10px] bg-black text-white font-black uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-zinc-800 transition-all disabled:opacity-30 border-r border-white/10"
+                  >
+                    <Layers size={18} /> 
+                    <span className="hidden sm:inline">Bulk Export</span>
+                  </button>
+                  <button 
+                    onClick={handleExport} 
+                    disabled={isExporting || isBulkRunning || !selectedGraphic} 
+                    className="px-4 h-full text-white hover:bg-zinc-800 transition-all disabled:opacity-30"
+                    title="Export Singolo"
+                  >
+                    <Download size={18} /> 
+                  </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10">
+          <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10 relative">
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30 relative">
+              {/* Avviso Sync (Ora perfettamente centrato rispetto al Canvas) */}
+              <AnimatePresence>
+                {syncWarnings[selectedProductId] && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none"
+                  >
+                    <div className="bg-amber-50/90 backdrop-blur-md border border-amber-200/50 px-4 py-2 rounded-2xl shadow-2xl shadow-amber-900/10 flex items-center gap-3 border-b-2 border-b-amber-200/80">
+                      <div className="p-1 bg-amber-500 rounded-lg text-white">
+                        <AlertCircle size={12} />
+                      </div>
+                      <span className="text-[9px] font-black text-amber-900 uppercase tracking-[0.1em] whitespace-nowrap">
+                        {syncWarnings[selectedProductId]}
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
               <div className="w-full h-full flex items-center justify-center p-4 md:p-12">
                 {selectedProduct ? (
                   <div className="w-full h-full flex flex-col items-center justify-center p-4 md:p-12 relative">
-                    {/* Avviso Sync (Se esiste per questo prodotto) */}
-                    <AnimatePresence>
-                      {syncWarnings[selectedProductId] && (
-                        <motion.div 
-                          initial={{ opacity: 0, y: -20 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -20 }}
-                          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border border-amber-200 shadow-xl flex items-center gap-2 backdrop-blur-md"
-                        >
-                          <AlertCircle size={14} className="text-amber-500" />
-                          {syncWarnings[selectedProductId]}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
                     <div 
                       id="canvas-container"
                     className="relative grid place-items-center h-full max-h-[85vh] mx-auto select-none"
@@ -1455,8 +1520,6 @@ function App() {
                           )}
                         </svg>
                         
-
-                        {/* Pannello SALVA ripristinato */}
                         <div 
                           className="absolute top-10 left-1/2 -translate-x-1/2 bg-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 z-[100] border-2 border-indigo-500 animate-bounce pointer-events-auto"
                           onMouseDown={(e) => e.stopPropagation()} 
@@ -1543,8 +1606,92 @@ function App() {
           </div>
         </div>
       </div>
+      <AnimatePresence>
+        {isBulkExportOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-10">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => !isBulkRunning && setIsBulkExportOpen(false)} className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" />
+            <motion.div initial={{ opacity: 0, scale: 0.9, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 20 }} className="relative w-full max-w-2xl bg-white rounded-[3rem] shadow-[0_50px_100px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col max-h-[80vh]">
+              <div className="p-8 border-b border-black/[0.03] flex items-center justify-between bg-gray-50/50">
+                <div>
+                  <h2 className="text-xl font-black uppercase tracking-tighter text-slate-900">Configura Bulk Export</h2>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Seleziona i prodotti per l'esportazione totale</p>
+                </div>
+                <button onClick={() => setIsBulkExportOpen(false)} disabled={isBulkRunning} className="p-3 rounded-full hover:bg-black/5 text-slate-400 transition-all">
+                  <RefreshCcw size={20} className={isBulkRunning ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(() => {
+                    const seenNames = new Set();
+                    return products.flatMap(p => {
+                      const pName = p.name.trim().toUpperCase();
+                      if (seenNames.has(pName)) return [];
+                      seenNames.add(pName);
+                      
+                      const mainCompName = Object.keys(p.components).find(c => {
+                        const n = c.toUpperCase();
+                        return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
+                               n.includes('PLS') || n.includes('PLL') || n.includes('PLSM') || 
+                               n.includes('PLV') || n.includes('LAMPADA') || n.includes('STRUTTURA') ||
+                               n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
+                               n.includes('BODY');
+                      }) || Object.keys(p.components)[0];
+
+                      const mainAssets = p.components[mainCompName] || [];
+                      const hasA = mainAssets.some(a => {
+                        const n = a.name.toUpperCase();
+                        return n.includes('_A.') || n.includes('_A_') || n.endsWith('_A') || n.includes('AMMACCATO');
+                      });
+                      const hasL = mainAssets.some(a => {
+                        const n = a.name.toUpperCase();
+                        return n.includes('_L.') || n.includes('_L_') || n.endsWith('_L') || n.includes('LISCIO');
+                      });
+
+                      if (hasA && hasL && !pName.includes('MINI')) {
+                        return [
+                          { ...p, variantId: `${p.id}_L`, variantLabel: `${p.name} Liscio`, surface: 'LISCIO' },
+                          { ...p, variantId: `${p.id}_A`, variantLabel: `${p.name} Ammaccato`, surface: 'AMMACCATO' }
+                        ];
+                      }
+                      return [{ ...p, variantId: p.id, variantLabel: p.name, surface: 'DEFAULT' }];
+                    });
+                  })().map(p => (
+                    <BulkItem 
+                      key={p.variantId}
+                      label={p.variantLabel} 
+                      productId={p.id} 
+                      surface={p.surface} 
+                      selected={bulkQueue.some(q => q.id === p.id && q.surface === p.surface)}
+                      onToggle={(sel) => handleToggleBulk(p.id, p.surface, sel)}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="p-8 bg-gray-50 border-t border-black/[0.03] flex items-center justify-between">
+                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{filteredBulkQueue.length} Prodotti Selezionati</div>
+                <button onClick={runBulkExport} disabled={isBulkRunning || filteredBulkQueue.length === 0} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-500 transition-all flex items-center gap-3">
+                  {isBulkRunning ? `Esportazione ${bulkProgress}/${bulkTotal}` : 'Avvia Bulk Export'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+
+const BulkItem = ({ label, selected, onToggle }: { label: string, productId: string, surface: string, selected: boolean, onToggle: (sel: boolean) => void }) => (
+  <button 
+    onClick={() => onToggle(!selected)}
+    className={`p-4 rounded-[1.5rem] border-2 transition-all flex items-center justify-between group ${selected ? 'border-indigo-600 bg-indigo-50/50' : 'border-black/[0.03] hover:border-black/10 bg-white'}`}
+  >
+    <span className={`text-[11px] font-black uppercase tracking-wider ${selected ? 'text-indigo-600' : 'text-slate-400'}`}>{label}</span>
+    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${selected ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-black/10'}`}>
+      {selected && <CheckCircle2 size={12} />}
+    </div>
+  </button>
+);
 
 export default App;
