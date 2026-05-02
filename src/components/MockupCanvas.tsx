@@ -15,24 +15,37 @@ interface Product {
 }
 
 interface MockupCanvasProps {
-  product: Product;
+  product: Product | null;
   selections: Record<string, ComponentAsset>;
-  graphic: string;
+  graphic: string | null;
   graphicScale: number;
   graphicY: number;
   graphicX: number;
+  centerY?: number; // Passiamo il valore esatto dall'App
+  baseWidth?: number; // Passiamo il valore esatto dall'App
 }
 
-const PRODUCT_CALIBRATION: Record<string, { centerY: number, baseWidth: number }> = {
-  'PROFUMATORE': { centerY: 0.74, baseWidth: 285 },
-  'LAMPADA': { centerY: 0.74, baseWidth: 285 },
-  'CANDELA 220': { centerY: 0.55, baseWidth: 320 },
-  'CANDELA 450': { centerY: 0.55, baseWidth: 380 },
-  'MINI': { centerY: 0.65, baseWidth: 240 },
-  'DEFAULT': { centerY: 0.5, baseWidth: 300 }
-};
+const PRODUCT_CALIBRATION: { keywords: string[], centerY: number, baseWidth: number }[] = [
+  { keywords: ['CANDELA 220'], centerY: 0.55, baseWidth: 320 },
+  { keywords: ['CANDELA 450'], centerY: 0.55, baseWidth: 380 },
+  { keywords: ['MINI', 'STICK'], centerY: 0.65, baseWidth: 240 },
+  { keywords: ['PROFUMATORE', 'PROF_', 'BARATTOLO'], centerY: 0.76, baseWidth: 285 },
+  { keywords: ['LAMPADA', 'LAMP_'], centerY: 0.74, baseWidth: 285 },
+];
 
-const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY, graphicX }: MockupCanvasProps) => {
+const DEFAULT_CALIBRATION = { centerY: 0.5, baseWidth: 300 };
+
+const MockupCanvas = (props: MockupCanvasProps) => {
+  const { product, selections, graphic, graphicScale, graphicY, graphicX, centerY: propCenterY, baseWidth: propBaseWidth } = props;
+
+  // Logica di calibrazione centralizzata
+  const pName = product?.name.toUpperCase() || '';
+  const calibration = PRODUCT_CALIBRATION.find(c => 
+    c.keywords.some(k => pName.includes(k))
+  ) || DEFAULT_CALIBRATION;
+
+  const currentCenterY = propCenterY !== undefined ? propCenterY : calibration.centerY;
+  const currentBaseWidth = propBaseWidth !== undefined ? propBaseWidth : calibration.baseWidth;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [images, setImages] = useState<Record<string, HTMLImageElement | null>>({});
   const [loading, setLoading] = useState(true);
@@ -116,47 +129,49 @@ const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY, gr
     canvas.width = 1000;
     canvas.height = 1250;
 
-    // Clear and Fill Background
+    // Clear and Fill Background (Dimensioni fisse 1000x1250)
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#f9fafb';
+    ctx.fillStyle = '#ffffff'; // Bianco pulito come da riferimento
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Check if we have at least one image
-    const loadedComponents = Object.keys(images).filter(k => k !== 'graphic' && images[k]);
-    
-    if (loadedComponents.length === 0) {
-        ctx.fillStyle = '#6366f1';
-        ctx.font = 'bold 30px Inter';
-        ctx.textAlign = 'center';
-        ctx.fillText('NESSUN COMPONENTE VISIBILE', canvas.width/2, canvas.height/2);
-        ctx.font = '16px monospace';
-        ctx.fillStyle = '#ef4444';
-        ctx.fillText('Verifica connessione server o cartella PRODOTTI', canvas.width/2, canvas.height/2 + 40);
-        return;
-    }
-
-    // Draw Layers (in order of component definitions)
+    // Draw Layers (Allineamento 1:1 per asset 1000x1250)
     Object.keys(product.components).forEach(cName => {
       const img = images[cName];
       if (img) {
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, 1000, 1250);
       }
     });
 
     // Draw Graphic Overlay
     if (images.graphic) {
-      const calibration = PRODUCT_CALIBRATION[product.id] || PRODUCT_CALIBRATION['DEFAULT'];
       const gScale = graphicScale / 100;
-      const graphicWidth = calibration.baseWidth * gScale;
+      const graphicWidth = currentBaseWidth * gScale;
       const aspectRatio = images.graphic.height / images.graphic.width;
       const graphicHeight = graphicWidth * aspectRatio;
 
       const centerX = (canvas.width / 2) + graphicX;
-      const jarCenterY = canvas.height * calibration.centerY;
+      const jarCenterY = canvas.height * currentCenterY;
       const centerY = jarCenterY + graphicY - (graphicHeight / 2);
 
       ctx.save();
       ctx.drawImage(images.graphic, centerX - graphicWidth / 2, centerY, graphicWidth, graphicHeight);
+      ctx.restore();
+    }
+
+    // --- DEBUG VISIVO: Disegniamo la griglia salvata ---
+    if (props.debugRect) {
+      const rx = (props.debugRect.x / 100) * canvas.width;
+      const ry = (props.debugRect.y / 100) * canvas.height;
+      const rw = (props.debugRect.w / 100) * canvas.width;
+      const rh = (props.debugRect.h / 100) * canvas.height;
+
+      ctx.save();
+      ctx.strokeStyle = 'cyan';
+      ctx.lineWidth = 4;
+      ctx.setLineDash([10, 10]);
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.1)';
+      ctx.fillRect(rx, ry, rw, rh);
       ctx.restore();
     }
 
@@ -166,10 +181,10 @@ const MockupCanvas = ({ product, selections, graphic, graphicScale, graphicY, gr
       ctx.textAlign = 'center';
       ctx.fillText('NESSUN COMPONENTE CARICATO', canvas.width/2, canvas.height/2);
     }
-  }, [images, loading, graphicScale, graphicY, graphicX, product]);
+  }, [images, loading, graphicScale, graphicY, graphicX, product, currentCenterY, currentBaseWidth, props.debugRect]);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center">
+    <div className="relative flex items-center justify-center">
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-30 rounded-[2rem]">
           <div className="text-center">

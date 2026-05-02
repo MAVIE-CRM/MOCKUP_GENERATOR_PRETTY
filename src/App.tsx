@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, ShieldCheck, ArrowRight, History } from 'lucide-react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ShieldCheck, ArrowRight, History, Ruler, Save, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -53,7 +53,35 @@ const EXTENDED_MAP: Record<string, string> = {
   'MEN': '#98FB98', 'NAV': '#000080', 'OLI': '#808000', 'OTT': '#008080',
   'POL': '#B0C4DE', 'RUG': '#A0522D', 'SAB': '#F4A460', 'SAL': '#FA8072',
   'BAB': '#F0E68C', 'CYT': '#E4D00A', 'ARA': '#F97316', 'MAR': '#451A03',
-  'FRA': '#E11D48', 'NAP': '#000080', 'MIN': '#334155', 'LIM': '#A3E635'
+};
+
+const DEFAULT_CALIBRATION = { centerY: 0.5, baseWidth: 300 };
+
+const PRODUCT_CALIBRATION: { keywords: string[], centerY: number, baseWidth: number }[] = [
+  { keywords: ['CANDELA 220'], centerY: 0.55, baseWidth: 320 },
+  { keywords: ['CANDELA 450'], centerY: 0.55, baseWidth: 380 },
+  { keywords: ['MINI', 'STICK'], centerY: 0.65, baseWidth: 240 },
+  { keywords: ['PROFUMATORE', 'PROF_', 'BARATTOLO'], centerY: 0.76, baseWidth: 285 },
+  { keywords: ['LAMPADA', 'LAMP_'], centerY: 0.74, baseWidth: 285 },
+];
+
+const normalize = (c: string) => {
+  const s = c.toUpperCase();
+  if (s === 'ARANCIO' || s === 'ARANCIONE') return 'ARANCIO';
+  if (s === 'NERO' || s === 'BLACK' || s === 'BK') return 'NERO';
+  if (s === 'BIANCO' || s === 'WHITE' || s === 'OFFWHITE') return 'BIANCO';
+  if (s === 'ORO' || s === 'GOLD') return 'ORO';
+  if (s === 'ARGENTO' || s === 'SILVER') return 'ARGENTO';
+  if (s === 'ROSA' || s === 'PINK') return 'ROSA';
+  if (s === 'ROSSO' || s === 'RED') return 'ROSSO';
+  if (s === 'VERDE' || s === 'GREEN') return 'VERDE';
+  if (s === 'BLU' || s === 'BLUE') return 'BLU';
+  if (s === 'VIOLA' || s === 'VIOLET' || s === 'VIO') return 'VIOLA';
+  if (s === 'LILLABABY') return 'LILLABABY';
+  if (s === 'LILLA' || s === 'LIL' || s === 'MALVA') return 'LILLA';
+  if (s === 'ORO' || s === 'GOLD' || s === 'COPPER' || s === 'RAME' || s === 'BRONZO' || s === 'BRASS' || s === 'OTTONE') return 'ORO';
+  if (s === 'ARGENTO' || s === 'SILVER' || s === 'CHROME' || s === 'CROMO' || s === 'STEEL' || s === 'ACCIAIO') return 'ARGENTO';
+  return s;
 };
 
 function App() {
@@ -74,6 +102,7 @@ function App() {
     colorCode: string | null;
     isAmmaccato: boolean;
   }>({ colorCode: null, isAmmaccato: false });
+  const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
@@ -81,16 +110,56 @@ function App() {
   const [graphicY, setGraphicY] = useState(0);
   const [graphicX, setGraphicX] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [smartFitStatus, setSmartFitStatus] = useState('');
+
+  // STATO PER IL CALIBRATION ENGINE
+  const [isCalibrating, setIsCalibrating] = useState(false);
+  const [calibRect, setCalibRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
+  const [showDebugGrid, setShowDebugGrid] = useState(false);
+  const [isGlobalLocked, setIsGlobalLocked] = useState(true); // Default attivo per comodità
+  const [syncWarnings, setSyncWarnings] = useState<Record<string, string>>({});
+  const [savedCalibrations, setSavedCalibrations] = useState<Record<string, { x: number, y: number, w: number, h: number }>>(() => {
+    const saved = localStorage.getItem('pretty_calibrations');
+    return saved ? JSON.parse(saved) : {};
+  });
 
   const [isFloraRunning, setIsFloraRunning] = useState(false);
   const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
   const [floraStatus, setFloraStatus] = useState<string>('');
-  const [smartFitStatus, setSmartFitStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
+
+  // Sincronizzazione automatica della griglia SOLO all'apertura o al cambio prodotto
+  useEffect(() => {
+    if (isCalibrating && selectedProduct && !isDrawing) {
+      const getProductMacroCategoryLocal = () => {
+        if (!selectedProduct) return 'DEFAULT';
+        const firstComp = Object.values(selectedProduct.components)[0]?.[0];
+        const folder = firstComp ? firstComp.folder.toUpperCase() : '';
+        const name = selectedProduct.name.toUpperCase();
+        const fullPathInfo = `${folder} ${name}`;
+        if (fullPathInfo.includes('PROFUMATORE')) return 'PROFUMATORE';
+        if (fullPathInfo.includes('LAMPADA')) return 'LAMPADA';
+        if (fullPathInfo.includes('CANDELA 220')) return 'CANDELA_220';
+        if (fullPathInfo.includes('CANDELA 450')) return 'CANDELA_450';
+        if (fullPathInfo.includes('MINI') || fullPathInfo.includes('STICK')) return 'MINI';
+        if (fullPathInfo.includes('BARATTOLO') || fullPathInfo.includes('VASO') || fullPathInfo.includes('PLS')) return 'BARATTOLO';
+        return 'DEFAULT';
+      };
+
+      const cat = getProductMacroCategoryLocal();
+      const saved = savedCalibrations[cat] || savedCalibrations['GLOBAL'];
+      if (saved && !calibRect) {
+        setCalibRect(saved);
+      }
+    }
+  }, [isCalibrating, selectedProductId, savedCalibrations, isDrawing, calibRect, selectedProduct]);
+
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -185,38 +254,8 @@ function App() {
   };
 
 
-  // EFFETTO DI EMULAZIONE AUTOMATICA AL CAMBIO PRODOTTO
-  useEffect(() => {
-    if (!selectedProduct || !masterConfig.colorCode) return;
-
-    const currentSelections = selections[selectedProductId] || {};
-    const newSelections = { ...currentSelections };
-    let emulationCount = 0;
-
-    Object.entries(selectedProduct.components).forEach(([cName, assets]) => {
-      // Cerchiamo un asset che corrisponda al colore e allo stato liscio/ammaccato
-      const targetSuffix = masterConfig.isAmmaccato ? '_A' : '_L';
-      
-      const match = assets.find(a => {
-        const aName = a.name.toUpperCase();
-        return aName.includes(masterConfig.colorCode!) && aName.includes(targetSuffix);
-      }) || assets.find(a => {
-        const aName = a.name.toUpperCase();
-        return aName.includes(masterConfig.colorCode!);
-      });
-
-      if (match && (!currentSelections[cName] || currentSelections[cName].path !== match.path)) {
-        newSelections[cName] = match;
-        emulationCount++;
-      }
-    });
-
-    if (emulationCount > 0) {
-      setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      setFloraStatus(`Emulazione Style: ${masterConfig.colorCode} ✨`);
-      setTimeout(() => setFloraStatus(''), 2000);
-    }
-  }, [selectedProductId]);
+  // Rimosso effetto di emulazione automatica (troppo invadente)
+  // Il Lucchetto ora agisce solo durante la selezione manuale degli asset
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
@@ -230,48 +269,51 @@ function App() {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve('');
         
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+        // Usiamo una dimensione piccola per fare una media veloce e pulita
+        const SIZE = 20;
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        ctx.drawImage(img, 0, 0, SIZE, SIZE);
         
-        const name = fileName.toUpperCase();
-        let sampleX = Math.floor(img.width * 0.5);
-        let sampleY = Math.floor(img.height * 0.75);
+        const data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+        let r = 0, g = 0, b = 0, count = 0;
 
-        // Casi particolari
-        if (name.includes('STICK')) {
-          sampleY = Math.floor(img.height * 0.5);
-        }
-
-        const getPixelColor = (x: number, y: number) => {
-          const data = ctx.getImageData(x, y, 1, 1).data;
-          if (data[3] > 100) { // Se è abbastanza opaco
-            return `rgb(${data[0]},${data[1]},${data[2]})`;
-          }
-          return null;
-        };
-
-        // 1. Prova il punto ideale (75%)
-        let color = getPixelColor(sampleX, sampleY);
-
-        // 2. Fallback: Scansione verticale se il punto è vuoto
-        if (!color) {
-          // Cerchiamo dal 30% all'85% dell'altezza
-          for (let y = Math.floor(img.height * 0.3); y < Math.floor(img.height * 0.85); y += 10) {
-            color = getPixelColor(sampleX, y);
-            if (color) break;
+        for (let i = 0; i < data.length; i += 4) {
+          const alpha = data[i + 3];
+          // Consideriamo solo pixel abbastanza opachi e non troppo scuri (per evitare ombre)
+          if (alpha > 50) {
+            const pr = data[i];
+            const pg = data[i+1];
+            const pb = data[i+2];
+            
+            // Filtro per evitare il nero assoluto o il bianco puro se possibile
+            const brightness = (pr * 299 + pg * 587 + pb * 114) / 1000;
+            if (brightness > 10 && brightness < 245) {
+              r += pr;
+              g += pg;
+              b += pb;
+              count++;
+            }
           }
         }
 
-        if (color) {
-          console.log(`[ColorEye] Estratto per ${fileName}: ${color}`);
-          resolve(color);
+        if (count > 0) {
+          const finalColor = `rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`;
+          console.log(`[ColorEye] Dominante per ${fileName}: ${finalColor}`);
+          resolve(finalColor);
         } else {
+          // Se tutto è filtrato, prendiamo il primo pixel opaco che troviamo
+          for (let i = 0; i < data.length; i += 4) {
+            if (data[i+3] > 10) {
+              resolve(`rgb(${data[i]},${data[i+1]},${data[i+2]})`);
+              return;
+            }
+          }
           resolve('');
         }
       };
       img.onerror = () => {
-        console.error(`[ColorEye] Errore caricamento immagine per estrazione: ${url}`);
+        console.error(`[ColorEye] Errore caricamento: ${url}`);
         resolve('');
       };
     });
@@ -334,15 +376,27 @@ function App() {
     const name = asset.name.toUpperCase();
     const label = formatLabel(asset.name);
     
-    const parts = name.replace(/\..+$/, '').split(/[_\s-]/);
-    const colorCode = parts.length >= 2 ? parts[1].toUpperCase() : parts[0].toUpperCase();
+    // Scansione intelligente del nome per trovare il colore
+    const cleanName = name.replace(/\..+$/, '').replace(/^PLS_/i, '');
+    const parts = cleanName.split(/[_\s-]/).filter(p => p);
+    const foundCode = parts.find(p => EXTENDED_MAP[p]);
+    const colorCode = foundCode || parts[0] || '';
     
-    // Priorità: Codice dal nome -> Etichetta -> Analisi Pixel
-    const pixelColor = assetColors[`${selectedProductId}_${asset.path}`];
-    const bgColor = pixelColor || EXTENDED_MAP[colorCode] || EXTENDED_MAP[label];
+    const colorKey = `${selectedProductId}_${asset.path}`;
+    const pixelColor = assetColors[colorKey];
+    
+    // Fallback: se non abbiamo ancora il pixelColor, usiamo la mappa
+    const mapColor = EXTENDED_MAP[colorCode] || 
+                     Object.keys(EXTENDED_MAP).find(k => label.includes(k) && k.length > 2 && label.includes(k)) && EXTENDED_MAP[Object.keys(EXTENDED_MAP).find(k => label.includes(k) && k.length > 2)!] ||
+                     EXTENDED_MAP[label];
+    
+    // Se pixelColor è una stringa vuota o null, forza l'uso di mapColor
+    const bgColor = (pixelColor && pixelColor !== '') ? pixelColor : mapColor;
+    
+    // Log di monitoraggio per ogni icona
+    console.log(`[IconStyle] ${name} | Code: ${colorCode} | Pixel: ${pixelColor || 'N/A'} | Map: ${mapColor || 'N/A'} | Final: ${bgColor || 'GRAY'}`);
     
     if (bgColor) {
-      // Calcolo contrasto testo (bianco o nero)
       let r = 0, g = 0, b = 0;
       if (bgColor.startsWith('#')) {
         const hex = bgColor.replace('#', '');
@@ -366,24 +420,119 @@ function App() {
   };
 
   const handleSelection = (componentName: string, asset: ComponentAsset) => {
-    // Aggiorniamo la selezione locale
-    setSelections(prev => ({
-      ...prev,
-      [selectedProductId]: {
-        ...prev[selectedProductId],
-        [componentName]: asset
-      }
-    }));
-
-    // AGGIORNIAMO LA MASTER CONFIG PER EMULAZIONE
-    // Estraiamo il colore e il tipo di superficie dall'asset selezionato
     const name = asset.name.toUpperCase();
-    const parts = name.replace(/\..+$/, '').split(/[_\s-]/);
-    const colorCode = parts.length >= 2 ? parts[1].toUpperCase() : parts[0].toUpperCase();
-    const isAmmaccato = name.includes('_A') || asset.fullPath.toUpperCase().includes('AMM');
+    const fullPath = asset.fullPath.toUpperCase();
+    
+    // 1. ESTRAZIONE IDENTITÀ INTELLIGENTE
+    const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM', 'PLL', 'PLS', 'PLSM'];
+    
+    const nameParts = name.replace(/\..+$/, '').split('_');
+    const fullColorName = nameParts.length >= 2 ? nameParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_') : name;
+    const normColor = normalize(fullColorName);
+    
+    const isAmmaccato = name.includes('_A') || fullPath.includes('AMM') || name.includes('AMMACCATA') || name.includes('AMMACCATO');
+    const targetSuffix = isAmmaccato ? '_A' : '_L';
 
-    setMasterConfig({ colorCode, isAmmaccato });
-    console.log(`Master Style Updated: ${colorCode} (${isAmmaccato ? 'Ammaccato' : 'Liscio'})`);
+    setSelections(prev => {
+      const newSelections = { ...prev };
+      newSelections[selectedProductId] = {
+        ...(newSelections[selectedProductId] || {}),
+        [componentName]: asset
+      };
+
+      if (isGlobalLocked) {
+        const newWarnings: Record<string, string> = { ...syncWarnings };
+        
+        products.forEach(p => {
+          if (p.id === selectedProductId) {
+            delete newWarnings[p.id];
+            return;
+          }
+
+          Object.keys(p.components).forEach(pCName => {
+            const upCName = pCName.toUpperCase();
+            const upComponentName = componentName.toUpperCase();
+
+            const isMainBody = (n: string) => n.includes('BARATTOLO') || n.includes('VASO') || n.includes('PLS') || n.includes('FLACONE') || n.includes('LAMPADA') || n.includes('STRUTTURA') || n.includes('CANDELA') || n.includes('VETRO');
+            const isTappo = (n: string) => n.includes('TAPPO') || n.includes('CHIUSURA') || n.includes('COPERCHIO');
+            const isStick = (n: string) => n.includes('STICK') || n.includes('BAST') || n.includes('LEGNO') || n.includes('DIFFUSORE');
+
+            if (!(upCName === upComponentName || (isMainBody(upComponentName) && isMainBody(upCName)) || (isTappo(upComponentName) && isTappo(upCName)) || (isStick(upComponentName) && isStick(upCName)))) return;
+
+            const productAssets = p.components[pCName];
+            
+            // CERCHIAMO IL MATCH USANDO IL COLORE NORMALIZZATO (Identità Esatta)
+            let match = productAssets.find(a => {
+              const aName = a.name.toUpperCase();
+              const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+              const aColorRaw = aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+              const aColorNorm = normalize(aColorRaw);
+              const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
+              return (aColorRaw === fullColorName || aColorNorm === normColor) && hasSurface;
+            });
+
+            // Se non lo trovo con la superficie o posizione esatta, cerco ovunque nel nome (per LAMPADE/STRUTTURA)
+            if (!match) {
+              match = productAssets.find(a => {
+                const aName = a.name.toUpperCase();
+                const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+                // Cerchiamo se una qualsiasi parte del nome (normalizzata) corrisponde al colore target
+                return aParts.some(part => normalize(part) === normColor);
+              });
+            }
+
+            if (match) {
+              const matchName = match.name.toUpperCase();
+              const isPerfectSurface = matchName.includes(targetSuffix) || match.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC');
+              
+              const upPName = p.name.toUpperCase();
+              const isAutoMatchProduct = 
+                upCName.includes('STICK') || upCName.includes('MINI') || upCName.includes('LAMPADA') || upCName.includes('CANDELA') ||
+                upPName.includes('MINI') || upPName.includes('LAMPADA') || upPName.includes('CANDELA');
+              
+              if (isPerfectSurface || isAutoMatchProduct) {
+                delete newWarnings[p.id];
+              } else {
+                newWarnings[p.id] = `⚠️ Match Parziale per ${p.name}: superficie non trovata.`;
+              }
+            } else {
+              // 3. Colore Simile (Fuzzy)
+              // Se non abbiamo trovato il colore normalizzato, cerchiamo per parole chiave base
+              const colors = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA'];
+              const baseColor = colors.find(c => normColor.includes(c));
+
+              match = productAssets.find(a => {
+                const aName = a.name.toUpperCase();
+                const hasBase = baseColor ? aName.includes(baseColor) : false;
+                return hasBase && (aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(isAmmaccato ? 'AMM' : 'LISC'));
+              }) || productAssets.find(a => baseColor && a.name.toUpperCase().includes(baseColor));
+
+              if (match) {
+                const foundAltColor = match.name.toUpperCase().replace(/\..+$/, '').split('_').slice(1).filter(p => !surfaceWords.includes(p)).join(' ');
+                newWarnings[p.id] = `⚠️ '${fullColorName.replace(/_/g, ' ')}' non trovato per ${p.name}, applicato '${foundAltColor}'`;
+              } else {
+                newWarnings[p.id] = `❌ Nessun colore simile a '${fullColorName.replace(/_/g, ' ')}' per ${p.name}`;
+              }
+            }
+
+            if (match) {
+              newSelections[p.id] = { ...(newSelections[p.id] || {}), [pCName]: match };
+            }
+          });
+        });
+        
+        setSyncWarnings(newWarnings);
+      }
+      
+      return newSelections;
+    });
+
+    if (isGlobalLocked) {
+      setFloraStatus(`Sync Globale: ${fullColorName.replace(/_/g, ' ')} 🔒`);
+      setTimeout(() => setFloraStatus(''), 2000);
+    }
+
+    setMasterConfig({ colorCode: baseColorKeyword || 'DEFAULT', isAmmaccato });
   };
 
 
@@ -476,58 +625,59 @@ function App() {
     const newSelections = { ...currentSelections };
     let switchedCount = 0;
 
-    // 1. Determiniamo la direzione globale
-    let globalTarget: 'LISCIO' | 'AMMACCATO' | null = null;
-    for (const cName of Object.keys(currentSelections)) {
-      const asset = currentSelections[cName];
-      const path = asset.fullPath.toUpperCase();
-      const name = asset.name.toUpperCase();
-      
-      if (path.includes('LISCIO') || name.includes('_L')) {
-        globalTarget = 'AMMACCATO';
-        break;
-      } else if (path.includes('AMM') || name.includes('_A')) {
-        globalTarget = 'LISCIO';
-        break;
-      }
-    }
+    // 1. Determiniamo la direzione basandoci sulla Master Config
+    const globalTarget: 'LISCIO' | 'AMMACCATO' = masterConfig.isAmmaccato ? 'LISCIO' : 'AMMACCATO';
+    const targetSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
+    const targetKey = globalTarget === 'AMMACCATO' ? 'AMM' : 'LISC';
 
-    if (!globalTarget) return;
-
-    // 2. Applichiamo la direzione
+    // 2. Applichiamo la direzione con logica intelligente
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
       const name = asset.name.toUpperCase();
-      const parts = name.replace(/\..+$/, '').split('_');
-      const colorCode = parts[1]; // Es. NERO
-      const toSuffix = globalTarget === 'AMMACCATO' ? '_A' : '_L';
-      const toKey = globalTarget === 'AMMACCATO' ? 'AMM' : 'LISC';
+      const fullPath = asset.fullPath.toUpperCase();
+
+      // Estraiamo l'identità del colore attuale
+      const colors = [
+        'NERO', 'BK', 'BLACK', 'WHITE', 'BIANCO', 'ORO', 'GOLD', 'SILVER', 'ARGENTO', 
+        'PNK', 'PINK', 'ROSA', 'RED', 'ROSSO', 'BLU', 'BLUE', 'GREEN', 'VERDE', 'TRASPARENTE', 'CLEAR',
+        'ARA', 'ARANCIONE', 'GIA', 'GIALLO', 'VIO', 'VIOLA', 'TIF', 'TIFFANY', 'MAG', 'MAGENTA', 'MAR', 'MARRONE', 'GRI', 'GRIGIO', 'BEI', 'BEIGE', 'OLIVA', 'OLIVE', 'LIL', 'LILLA', 'LILLABABY',
+        'COPPER', 'RAME', 'BRONZO', 'BRASS', 'OTTONE', 'CHROME', 'CROMO', 'STEEL', 'ACCIAIO'
+      ];
+      const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM'];
+      const nameParts = name.replace(/\..+$/, '').split('_');
+      const fullColorName = nameParts.length >= 2 ? nameParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_') : name;
       
-      const currentPath = asset.folder.toUpperCase();
-      const pathParts = currentPath.split(/[/\\]/).filter(p => p);
-      const currentSubFolder = pathParts.length > 1 ? pathParts[1] : null;
+      const currentAssetParts = asset.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
+      const hasLRSuffix = ['L', 'A'].includes(currentAssetParts[currentAssetParts.length - 1]);
+      const currentPrefix = hasLRSuffix ? currentAssetParts.slice(0, -1).join('_') : currentAssetParts.join('_');
+      const currentAssetColorRaw = currentAssetParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+      const currentAssetColorNorm = normalize(currentAssetColorRaw);
 
       const possibleAssets = selectedProduct.components[cName];
-      if (!possibleAssets || !colorCode) return;
+      if (!possibleAssets) return;
 
-      // Cerchiamo l'asset gemello:
-      // 1. Priorità: Stesso Colore + Radice Cartella Target + Stessa Sottocartella (es. METAL) + Suffisso Opposto
-      // 2. Fallback: Stesso Colore + Radice Cartella Target + Suffisso Opposto
+      // Logica di Reversibilità Totale:
+      // 1. Cerchiamo il gemello con PREFISSO IDENTICO + Superficie Target
+      // 2. Se non esiste, cerchiamo per COLORE RAW + Superficie Target
+      // 3. Se non esiste, cerchiamo per COLORE NORM + Superficie Target
       const target = possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        const hasColor = aName.includes(colorCode);
-        const hasSuffix = aName.includes(toSuffix);
-        const hasKey = aFolder.includes(toKey);
-        const sameSub = currentSubFolder ? aFolder.includes(currentSubFolder) : true;
-        return hasColor && hasSuffix && hasKey && sameSub;
+        const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+        const aPrefix = ['L', 'A'].includes(aParts[aParts.length - 1]) ? aParts.slice(0, -1).join('_') : aParts.join('_');
+        const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
+        return aPrefix === currentPrefix && hasSurface && a.path !== asset.path;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
-        const aFolder = a.folder.toUpperCase();
-        return aName.includes(colorCode) && aName.includes(toSuffix) && aFolder.includes(toKey);
+        const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+        const aColorRaw = aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_');
+        const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
+        return aColorRaw === currentAssetColorRaw && hasSurface && a.path !== asset.path;
       }) || possibleAssets.find(a => {
         const aName = a.name.toUpperCase();
-        return aName.includes(colorCode) && aName.includes(toSuffix);
+        const aParts = aName.replace(/\..+$/, '').split(/[_-]/);
+        const aColorNorm = normalize(aParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_'));
+        const hasSurface = aName.includes(targetSuffix) || a.fullPath.toUpperCase().includes(targetKey);
+        return aColorNorm === currentAssetColorNorm && hasSurface && a.path !== asset.path;
       });
 
       if (target) {
@@ -538,111 +688,136 @@ function App() {
 
     if (switchedCount > 0) {
       setSelections(prev => ({ ...prev, [selectedProductId]: newSelections }));
-      setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
-      setTimeout(() => setFloraStatus(''), 2000);
     }
-  };
-
-  const handleSmartFit = async () => {
-    if (!selectedProduct || !selectedGraphic) return;
     
-    setSmartFitStatus('Analisi Bounding Box...');
-    console.log("Smart Fit: Avvio analisi per", selectedProduct.name);
+    // Toggle sempre lo stato globale per coerenza del pulsante
+    setMasterConfig(prev => ({ ...prev, isAmmaccato: globalTarget === 'AMMACCATO' }));
+    
+    setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
+    setTimeout(() => setFloraStatus(''), 2000);
+  };
 
+  const getProductMacroCategory = () => {
+    if (!selectedProduct) return 'DEFAULT';
+    
+    // Prendiamo il percorso della cartella del primo componente per capire la macro-categoria
+    const firstComp = Object.values(selectedProduct.components)[0]?.[0];
+    const folder = firstComp ? firstComp.folder.toUpperCase() : '';
+    const name = selectedProduct.name.toUpperCase();
+    const fullPathInfo = `${folder} ${name}`;
+    
+    if (fullPathInfo.includes('PROFUMATORE')) return 'PROFUMATORE';
+    if (fullPathInfo.includes('LAMPADA')) return 'LAMPADA';
+    if (fullPathInfo.includes('CANDELA 220')) return 'CANDELA_220';
+    if (fullPathInfo.includes('CANDELA 450')) return 'CANDELA_450';
+    if (fullPathInfo.includes('MINI') || fullPathInfo.includes('STICK')) return 'MINI';
+    if (fullPathInfo.includes('BARATTOLO') || fullPathInfo.includes('VASO') || fullPathInfo.includes('PLS')) return 'BARATTOLO';
+    return 'DEFAULT';
+  };
+
+  const handleCalibrationSave = () => {
+    console.log("[Calibration] Avvio salvataggio...");
+    
+    if (!calibRect || calibRect.w < 1 || calibRect.h < 1) {
+      alert("ERRORE: La griglia è troppo piccola o non disegnata bene. Riprova a trascinare il mouse!");
+      return;
+    }
+    
+    const cat = getProductMacroCategory();
+    alert("Categoria rilevata: " + cat);
+    
     try {
-      // 1. Troviamo l'asset del corpo principale (più flessibile)
-      const mainCompName = Object.keys(selectedProduct.components).find(c => {
-        const n = c.toUpperCase();
-        return n.includes('CONTENITORE') || n.includes('FLACONE') || n.includes('JAR') || 
-               n.includes('BARATTOLO') || n.includes('BOTTIGLIA') || n.includes('VASO') ||
-               n.includes('LAMPADA') || n.includes('STRUTTURA') || n.includes('BODY') ||
-               n.includes('BASE');
-      }) || Object.keys(selectedProduct.components)[0];
-
-      const asset = selections[selectedProductId]?.[mainCompName];
-      if (!asset) {
-        console.warn("Smart Fit: Nessun asset selezionato per il componente principale");
-        setSmartFitStatus('Errore: Seleziona Prodotto');
-        setTimeout(() => setSmartFitStatus(''), 2000);
-        return;
-      }
-
-      console.log("Smart Fit: Analizzando asset", asset.name);
-
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      let baseUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-      img.src = baseUrl;
+      const updated = { ...savedCalibrations, [cat]: calibRect, 'GLOBAL': calibRect };
+      localStorage.setItem('pretty_calibrations', JSON.stringify(updated));
+      setSavedCalibrations(updated);
       
-      // Timeout di 5 secondi per il caricamento
-      const loadPromise = new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = () => reject(new Error("Errore caricamento immagine"));
-        setTimeout(() => reject(new Error("Timeout caricamento")), 5000);
-      });
-
-      await loadPromise;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = 400;
-      canvas.height = 500;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) throw new Error("Canvas context non creato");
-
-      ctx.drawImage(img, 0, 0, 400, 500);
-      const imageData = ctx.getImageData(0, 0, 400, 500).data;
-
-      // Analizziamo la larghezza di ogni riga
-      let rowWidths = [];
-      for (let y = 0; y < 500; y++) {
-        let first = -1, last = -1;
-        for (let x = 0; x < 400; x++) {
-          if (imageData[(y * 400 + x) * 4 + 3] > 20) {
-            if (first === -1) first = x;
-            last = x;
-          }
-        }
-        rowWidths[y] = first === -1 ? 0 : last - first;
-      }
-
-      const maxWidth = Math.max(...rowWidths);
-      if (maxWidth === 0) throw new Error("Immagine vuota rilevata");
-
-      let bodyTop = 0, bodyBottom = 499;
-      for (let y = 0; y < 500; y++) {
-        if (rowWidths[y] > maxWidth * 0.6) {
-          bodyTop = y;
-          break;
-        }
-      }
-      for (let y = 499; y >= 0; y--) {
-        if (rowWidths[y] > 5) {
-          bodyBottom = y;
-          break;
-        }
-      }
-
-      const bodyHeight = bodyBottom - bodyTop;
-      const centerY = bodyTop + (bodyHeight / 2);
-      
-      const realCenterY = centerY * 2.5;
-      const targetY = Math.round((realCenterY - 625) / 5);
-      const targetScale = Math.round((maxWidth / 400) * 115); 
-
-      setGraphicScale(targetScale);
-      setGraphicY(targetY);
-      setGraphicX(0);
-
-      setSmartFitStatus('Fitting Completato! ✨');
-      console.log("Smart Fit: Successo!", { targetScale, targetY });
+      alert("SALVATO CON SUCCESSO! ✅ Ora puoi provare il tasto FIT.");
+      setIsCalibrating(false);
+      setCalibRect(null); // Reset dopo il salvataggio
+      setSmartFitStatus('Griglia Salvata! ✅');
       setTimeout(() => setSmartFitStatus(''), 2000);
-    } catch (err: any) {
-      console.error("Smart Fit Error:", err.message);
-      setSmartFitStatus(err.message.includes('CORS') ? 'Errore Sicurezza (CORS)' : 'Errore Analisi');
-      setTimeout(() => setSmartFitStatus(''), 3000);
+    } catch (err) {
+      alert("Errore durante il salvataggio: " + err);
     }
   };
+
+  const handleCalibrationToggle = () => {
+    if (!isCalibrating) {
+      setCalibRect(null); // Reset per forzare il ricaricamento dal salvataggio
+      setIsCalibrating(true);
+    } else {
+      setIsCalibrating(false);
+      setCalibRect(null);
+    }
+  };
+
+  const handleSmartFit = () => {
+    if (!selectedProduct || !selectedGraphic) {
+      alert("Seleziona prima un prodotto e una grafica!");
+      return;
+    }
+    
+    const cat = getProductMacroCategory();
+    const saved = savedCalibrations[cat] || savedCalibrations['GLOBAL'];
+
+    if (saved) {
+      const getDimensions = (url: string): Promise<{w: number, h: number}> => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.src = url;
+          img.onload = () => resolve({w: img.width, h: img.height});
+          img.onerror = () => resolve({w: 1000, h: 1000});
+        });
+      };
+
+      getDimensions(selectedGraphic.path).then(({w, h}) => {
+        const assetRatio = h / w;
+        
+        // 1. DIMENSIONI BERSAGLIO (Griglia Rossa) con margine di sicurezza del 5%
+        const safetyMargin = 0.95;
+        const targetW = (saved.w / 100) * 1000 * safetyMargin;
+        const targetH = (saved.h / 100) * 1250 * safetyMargin;
+        const targetCenterX = ((saved.x + saved.w / 2) / 100) * 1000;
+        const targetCenterY = ((saved.y + saved.h / 2) / 100) * 1250;
+
+        const pName = selectedProduct.name.toUpperCase();
+        const calibration = PRODUCT_CALIBRATION.find(c => 
+          c.keywords.some(k => pName.includes(k))
+        ) || DEFAULT_CALIBRATION;
+
+        // 2. CALCOLO SCALA PER LARGHEZZA
+        const baseW = calibration.baseWidth;
+        const scaleW = (targetW / baseW) * 100;
+
+        // 3. CALCOLO SCALA PER ALTEZZA
+        const baseH = baseW * assetRatio;
+        const scaleH = (targetH / baseH) * 100;
+
+        // 4. LA REGOLA DEL 2 SU 2: Scegliamo la scala più piccola tra le due
+        const finalScale = Math.round(Math.min(scaleW, scaleH));
+        
+        // 5. POSIZIONAMENTO CHIRURGICO
+        const jarCenterY = 1250 * calibration.centerY;
+        const finalY = Math.round(targetCenterY - jarCenterY);
+        const finalX = Math.round(targetCenterX - 500);
+
+        setGraphicScale(finalScale);
+        setGraphicY(finalY);
+        setGraphicX(finalX);
+        
+        setSmartFitStatus(`Fit 2/2 OK! (Scale: ${finalScale}%) 🎯`);
+        setTimeout(() => setSmartFitStatus(''), 3000);
+      });
+    }
+  };
+
+  // AUTOMAZIONE: Smart Auto-Fit al cambio grafica o prodotto
+  useEffect(() => {
+    if (selectedGraphic && selectedProduct && !isCalibrating && !isDrawing) {
+      handleSmartFit();
+    }
+  }, [selectedGraphic, selectedProductId]);
 
   const handleExport = () => {
     setIsExporting(true);
@@ -807,10 +982,15 @@ function App() {
             {selectedProduct && Object.entries(selectedProduct.components).map(([cName, assets], index) => {
               if (!assets || assets.length === 0) return null;
 
-              // Determiniamo se il componente usa la logica LISCIO/AMMACCATO
-              const hasMasterFolders = assets.some(a => {
+              // Determiniamo se il componente usa la logica LISCIO/AMMACCATO (Escludiamo MINI e STICK che devono essere sempre liberi)
+              const upCName = cName.toUpperCase();
+              const upPName = selectedProduct.name.toUpperCase();
+              const isExcluded = upCName.includes('STICK') || upCName.includes('MINI') || upPName.includes('MINI');
+
+              const hasMasterFolders = !isExcluded && assets.some(a => {
                 const f = (a.folder || '').toUpperCase();
-                return f.includes('LISCIO') || f.includes('AMMACCATO');
+                const n = a.name.toUpperCase();
+                return f.includes('LISC') || f.includes('AMM') || n.includes('_L') || n.includes('_A');
               });
 
               if (!hasMasterFolders) {
@@ -837,11 +1017,11 @@ function App() {
               }
 
               // Caso complesso: LISCIO/AMMACCATO (es. BARATTOLI)
-              // Usiamo le radici per essere flessibili (es. LISCII, AMMACCATI)
               const rawCategories: (string | null)[] = assets.map(a => {
                 const f = (a.folder || '').toUpperCase();
-                if (f.includes('LISC')) return 'LISCIO';
-                if (f.includes('AMM')) return 'AMMACCATO';
+                const n = a.name.toUpperCase();
+                if (f.includes('LISC') || n.includes('_L')) return 'LISCIO';
+                if (f.includes('AMM') || n.includes('_A')) return 'AMMACCATO';
                 return null;
               });
               
@@ -849,98 +1029,82 @@ function App() {
 
               const selectedAsset = selections[selectedProductId]?.[cName];
               const sFolder = (selectedAsset?.folder || '').toUpperCase();
-              let currentCategory: string = sFolder.includes('LISC') ? 'LISCIO' : (sFolder.includes('AMM') ? 'AMMACCATO' : (categories[0] || ''));
+              const sName = (selectedAsset?.name || '').toUpperCase();
+              const selectionCategory = (sFolder.includes('LISC') || sName.includes('_L')) ? 'LISCIO' : ((sFolder.includes('AMM') || sName.includes('_A')) ? 'AMMACCATO' : '');
               
-              const masterAssets = assets.filter(a => {
-                const f = (a.folder || '').toUpperCase();
-                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
-                return f.includes(targetKey);
-              });
-
-              // Asset Standard: sono quelli che non sono in una sottocartella ulteriore (es. LISCIO/METAL)
-              const standardAssets = getUniqueAssets(masterAssets.filter(a => {
-                const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                // Troviamo dove si trova la radice (LISC o AMM)
-                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
-                const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                return masterIdx === parts.length - 1;
-              }));
-
-              const subFolders = Array.from(new Set(masterAssets.filter(a => {
-                const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
-                const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                return masterIdx !== -1 && masterIdx < parts.length - 1;
-              }).map(a => {
-                const f = (a.folder || '').toUpperCase();
-                const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
-                const targetKey = currentCategory === 'LISCIO' ? 'LISC' : 'AMM';
-                const masterIdx = parts.findIndex(p => p.includes(targetKey));
-                return parts[masterIdx + 1];
-              }))).filter((s): s is string => s !== undefined && s !== null).sort();
-
-              const switchCategory = (cat: string) => {
-                const currentColor = selectedAsset ? selectedAsset.name.split('_')[1] : null;
-                const targetKey = cat === 'LISCIO' ? 'LISC' : 'AMM';
-                const target = (currentColor && assets.find(a => (a.folder || '').toUpperCase().includes(targetKey) && a.name.toUpperCase().includes(currentColor))) ||
-                               assets.find(a => (a.folder || '').toUpperCase().includes(targetKey));
-                if (target) handleSelection(cName, target);
-              };
+              // Se non c'è una tab attiva impostata, usiamo la categoria della selezione attuale
+              const currentTab = activeTabs[cName] || selectionCategory || categories[0];
 
               return (
                 <section key={cName} className="space-y-4">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between">
                     <label className="text-[10px] font-black uppercase tracking-widest block text-white/20">{index + 1}. {cName}</label>
-                    {currentCategory && (currentCategory.includes('LISCIO') || currentCategory.includes('AMM')) && (
-                      <button 
-                        onClick={handleSmartSwitch}
-                        className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
-                      >
-                        Switch {currentCategory.includes('LISCIO') ? 'Amm' : 'Liscio'}
-                      </button>
-                    )}
+                    <button 
+                      onClick={handleSmartSwitch}
+                      className="px-2 py-0.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase tracking-tighter transition-all border border-indigo-500/20"
+                    >
+                      Switch All
+                    </button>
                   </div>
 
-                  <div className="flex flex-wrap gap-1 p-1 bg-white/5 rounded-xl border border-white/5 shadow-inner">
-                    {categories.map((cat: string) => (
-                      <button 
-                        key={cat} 
-                        onClick={() => switchCategory(cat)} 
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-[8px] font-black uppercase tracking-tighter transition-all ${currentCategory === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/40 hover:text-white hover:bg-white/5'}`}
+                  {/* Tab Switcher */}
+                  <div className="flex gap-1 p-1 bg-white/5 rounded-xl border border-white/5">
+                    {categories.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setActiveTabs(prev => ({ ...prev, [cName]: cat }))}
+                        className={`flex-1 py-2 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${currentTab === cat ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/30 hover:text-white hover:bg-white/5'}`}
                       >
                         {cat}
                       </button>
                     ))}
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {standardAssets.map((asset) => (
-                      <button
-                        key={asset.path}
-                        onClick={() => handleSelection(cName, asset)}
-                        style={getAssetStyle(asset)}
-                        title={formatLabel(asset.name)}
-                        className={`w-10 h-10 rounded-full transition-all border-2 flex items-center justify-center text-[9px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
-                      >
-                        {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
-                      </button>
-                    ))}
-                  </div>
+                  {/* Tab Content */}
+                  {categories.filter(cat => cat === currentTab).map(cat => {
+                    const targetKey = cat === 'LISCIO' ? 'LISC' : 'AMM';
+                    const targetSuffix = cat === 'LISCIO' ? '_L' : '_A';
+                    
+                    const catAssets = assets.filter(a => {
+                      const f = (a.folder || '').toUpperCase();
+                      const n = a.name.toUpperCase();
+                      return f.includes(targetKey) || n.includes(targetSuffix);
+                    });
 
-                  {subFolders.map(sub => {
-                    const subAssets = getUniqueAssets(masterAssets.filter(a => (a.folder || '').toUpperCase().includes(sub)));
-                    if (subAssets.length === 0) return null;
+                    if (catAssets.length === 0) return (
+                      <div key={cat} className="p-8 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
+                        <p className="text-[9px] font-bold text-white/20 uppercase">Nessuna variante {cat}</p>
+                      </div>
+                    );
+
+                    const standardAssets = getUniqueAssets(catAssets.filter(a => {
+                      const f = (a.folder || '').toUpperCase();
+                      const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                      const masterIdx = parts.findIndex(p => p.includes(targetKey));
+                      return masterIdx === parts.length - 1;
+                    }));
+
+                    const subFolders = Array.from(new Set(catAssets.filter(a => {
+                      const f = (a.folder || '').toUpperCase();
+                      const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                      const masterIdx = parts.findIndex(p => p.includes(targetKey));
+                      return masterIdx !== -1 && masterIdx < parts.length - 1;
+                    }).map(a => {
+                      const f = (a.folder || '').toUpperCase();
+                      const parts = f.split(/[/\\]/).filter(p => p && p.toUpperCase() !== cName.toUpperCase());
+                      const masterIdx = parts.findIndex(p => p.includes(targetKey));
+                      return parts[masterIdx + 1];
+                    }))).filter((s): s is string => s !== undefined && s !== null).sort();
+
                     return (
-                      <div key={sub} className="space-y-3 pt-2 border-t border-white/5">
-                        <div className="flex items-center gap-2">
-                          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                          <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">{sub} Edition</span>
-                          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                        </div>
+                      <motion.div 
+                        key={cat}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="space-y-4"
+                      >
                         <div className="flex flex-wrap gap-2">
-                          {subAssets.map((asset) => (
+                          {standardAssets.map((asset) => (
                             <button
                               key={asset.path}
                               onClick={() => handleSelection(cName, asset)}
@@ -952,7 +1116,30 @@ function App() {
                             </button>
                           ))}
                         </div>
-                      </div>
+
+                        {subFolders.map(sub => {
+                          const subAssets = getUniqueAssets(catAssets.filter(a => (a.folder || '').toUpperCase().includes(sub)));
+                          if (subAssets.length === 0) return null;
+                          return (
+                            <div key={sub} className="space-y-3 pt-3 border-t border-white/5">
+                              <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">{sub} Edition</span>
+                              <div className="flex flex-wrap gap-2">
+                                {subAssets.map((asset) => (
+                                  <button
+                                    key={asset.path}
+                                    onClick={() => handleSelection(cName, asset)}
+                                    style={getAssetStyle(asset)}
+                                    title={formatLabel(asset.name)}
+                                    className={`w-9 h-9 rounded-full transition-all border-2 flex items-center justify-center text-[8px] font-black shadow-md ${selections[selectedProductId]?.[cName]?.path === asset.path ? 'border-white scale-110 ring-4 ring-indigo-500/20' : 'border-transparent opacity-70 hover:opacity-100 hover:scale-105'}`}
+                                  >
+                                    {asset.name.toUpperCase().replace(/\..+$/, '').split('_')[1]?.substring(0, 3) || formatLabel(asset.name).substring(0, 3)}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </motion.div>
                     );
                   })}
                 </section>
@@ -1018,12 +1205,22 @@ function App() {
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden lg:flex items-center gap-4 px-3 py-1.5 bg-black/5 rounded-xl border border-black/[0.03]">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] font-black text-black/30 uppercase w-8">Scala</span>
-                  <div className="flex items-center bg-white/80 rounded-lg p-0.5 shadow-sm">
-                    <button onClick={() => setGraphicScale(s => Math.max(10, s - 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
-                    <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-16 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-1" />
-                    <button onClick={() => setGraphicScale(s => Math.min(400, s + 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleCalibrationToggle}
+                    className={`p-1.5 rounded-lg transition-all ${isCalibrating ? 'bg-red-500 text-white' : 'hover:bg-black/10 text-black/30'}`}
+                    title="Calibra Griglia di Fit"
+                  >
+                    <Ruler size={14} />
+                  </button>
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="text-[8px] font-black text-black/30 uppercase w-8">Scala</span>
+                    <div className="flex items-center bg-white/80 rounded-lg p-0.5 shadow-sm">
+                      <button onClick={() => setGraphicScale(s => Math.max(10, s - 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown size={12} /></button>
+                      <input type="range" min="10" max="250" value={graphicScale} onChange={(e) => setGraphicScale(parseInt(e.target.value))} className="w-16 h-1 bg-black/10 rounded-lg appearance-none cursor-pointer accent-black mx-1" />
+                      <button onClick={() => setGraphicScale(s => Math.min(400, s + 1))} className="p-1 hover:bg-black/5 rounded text-black/40"><ChevronDown className="rotate-180" size={12} /></button>
+                    </div>
                   </div>
                 </div>
 
@@ -1060,8 +1257,8 @@ function App() {
                   <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Switch</span>
                 </button>
                 <button onClick={handleSmartFit} className="p-2 rounded-xl bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white transition-all flex items-center gap-2 group border border-indigo-500/20 relative">
-                  <Search size={14} className="group-hover:scale-110 transition-transform" />
-                  <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Smart Fit</span>
+                  <Wand2 size={14} className="group-hover:scale-110 transition-transform" />
+                  <span className="text-[9px] font-black uppercase tracking-widest hidden xl:inline">Fit</span>
                   {smartFitStatus && (
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
@@ -1130,26 +1327,121 @@ function App() {
                   className="px-8 py-3 text-[10px] rounded-xl bg-black text-white font-black uppercase tracking-[0.2em] flex items-center gap-3 hover:bg-zinc-800 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-2xl shadow-black/20 disabled:opacity-30 disabled:grayscale disabled:hover:scale-100"
                 >
                   <Download size={18} /> 
-                  <span className="hidden sm:inline">Export Design</span>
+                  <span className="hidden sm:inline">Export</span>
                 </button>
               </div>
             </div>
           </div>
 
-
           <div className="flex-1 flex flex-col lg:flex-row overflow-hidden z-10">
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/30 relative">
               <div className="w-full h-full flex items-center justify-center p-4 md:p-12">
                 {selectedProduct ? (
-                  <div className="relative w-full h-full flex items-center justify-center max-w-5xl mx-auto">
-                      <MockupCanvas
-                        product={selectedProduct}
-                        selections={selections[selectedProductId] || {}}
-                        graphic={selectedGraphic?.path || 'PLACEHOLDER'}
-                        graphicScale={graphicScale}
-                        graphicY={graphicY}
-                        graphicX={graphicX}
-                      />
+                  <div className="w-full h-full flex flex-col items-center justify-center p-4 md:p-12 relative">
+                    {/* Avviso Sync (Se esiste per questo prodotto) */}
+                    <AnimatePresence>
+                      {syncWarnings[selectedProductId] && (
+                        <motion.div 
+                          initial={{ opacity: 0, y: -20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -20 }}
+                          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-amber-50 text-amber-700 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider border border-amber-200 shadow-xl flex items-center gap-2 backdrop-blur-md"
+                        >
+                          <AlertCircle size={14} className="text-amber-500" />
+                          {syncWarnings[selectedProductId]}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <div 
+                      id="canvas-container"
+                    className="relative grid place-items-center h-full max-h-[85vh] mx-auto select-none"
+                    style={{ aspectRatio: '1000/1250' }}
+                  >
+                    {/* Layer 1: Il Canvas reale */}
+                    <div className="col-start-1 row-start-1 w-full h-full shadow-2xl rounded-2xl overflow-hidden bg-white">
+                      {(() => {
+                        const pName = selectedProduct.name.toUpperCase();
+                        const calib = PRODUCT_CALIBRATION.find(c => c.keywords.some(k => pName.includes(k))) || DEFAULT_CALIBRATION;
+                        return (
+                          <MockupCanvas
+                            product={selectedProduct}
+                            selections={selections[selectedProductId] || {}}
+                            graphic={selectedGraphic?.path || 'PLACEHOLDER'}
+                            graphicScale={graphicScale}
+                            graphicY={graphicY}
+                            graphicX={graphicX}
+                            centerY={calib.centerY}
+                            baseWidth={calib.baseWidth}
+                            debugRect={showDebugGrid ? (savedCalibrations[getProductMacroCategory()] || null) : null}
+                          />
+                        );
+                      })()}
+                    </div>
+                    
+                    {/* Layer 2: La griglia di calibrazione (Sempre sopra al Canvas) */}
+                    {isCalibrating && (
+                      <div 
+                        className="col-start-1 row-start-1 w-full h-full z-50 cursor-crosshair bg-black/5 pointer-events-auto rounded-2xl"
+                        onMouseDown={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setIsDrawing(true);
+                          const px = ((e.clientX - rect.left) / rect.width) * 100;
+                          const py = ((e.clientY - rect.top) / rect.height) * 100;
+                          setStartPos({ x: px, y: py });
+                          setCalibRect({ x: px, y: py, w: 0.1, h: 0.1 });
+                        }}
+                        onMouseMove={(e) => {
+                          if (!isDrawing) return;
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const currentX = ((e.clientX - rect.left) / rect.width) * 100;
+                          const currentY = ((e.clientY - rect.top) / rect.height) * 100;
+                          setCalibRect({
+                            x: Math.min(startPos.x, currentX),
+                            y: Math.min(startPos.y, currentY),
+                            w: Math.max(0.1, Math.abs(currentX - startPos.x)),
+                            h: Math.max(0.1, Math.abs(currentY - startPos.y))
+                          });
+                        }}
+                        onMouseUp={() => setIsDrawing(false)}
+                        onMouseLeave={() => setIsDrawing(false)}
+                      >
+                        <svg className="w-full h-full pointer-events-none">
+                          {calibRect && (
+                            <rect
+                              x={`${calibRect.x}%`}
+                              y={`${calibRect.y}%`}
+                              width={`${calibRect.w}%`}
+                              height={`${calibRect.h}%`}
+                              fill="rgba(239, 68, 68, 0.2)"
+                              stroke="#ef4444"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                            />
+                          )}
+                        </svg>
+                        
+
+                        {/* Pannello SALVA ripristinato */}
+                        <div 
+                          className="absolute top-10 left-1/2 -translate-x-1/2 bg-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 z-[100] border-2 border-indigo-500 animate-bounce pointer-events-auto"
+                          onMouseDown={(e) => e.stopPropagation()} 
+                        >
+                          <span className="text-xs font-black uppercase text-indigo-600">Disegna e Clicca -&gt;</span>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCalibrationSave();
+                            }} 
+                            className="bg-green-500 text-white px-4 py-2 rounded-xl hover:bg-green-600 transition-all flex items-center gap-2 shadow-lg active:scale-90"
+                          >
+                            <Save size={18} />
+                            <span className="font-black uppercase text-[10px]">SALVA ORA</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-center opacity-20">
@@ -1162,7 +1454,26 @@ function App() {
 
             <div className="w-full lg:w-[360px] shrink-0 flex flex-col border-l border-black/[0.03] bg-white p-6 gap-6 shadow-[-20px_0_50px_rgba(0,0,0,0.02)]">
               <div className="flex items-center justify-between px-2">
-                <h2 className="text-[10px] font-black text-black/20 uppercase tracking-[0.2em]">Reality Engine</h2>
+                <div className="flex items-center gap-4">
+                  <h2 className="text-[10px] font-black text-black/20 uppercase tracking-[0.2em]">Reality Engine</h2>
+                  <div className="flex items-center bg-black/[0.02] rounded-lg p-0.5 border border-black/[0.03]">
+                    <button 
+                      onClick={() => setShowDebugGrid(!showDebugGrid)}
+                      className={`p-1.5 rounded-md transition-all ${showDebugGrid ? 'bg-cyan-500 text-white shadow-lg' : 'text-black/20 hover:text-black/40'}`}
+                      title={showDebugGrid ? "Nascondi Area Sacra" : "Mostra Area Sacra"}
+                    >
+                      {showDebugGrid ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+                    <div className="w-[1px] h-3 bg-black/5 mx-0.5" />
+                    <button 
+                      onClick={() => setIsGlobalLocked(!isGlobalLocked)}
+                      className={`p-1.5 rounded-md transition-all ${isGlobalLocked ? 'bg-amber-500 text-white shadow-lg' : 'text-black/20 hover:text-black/40'}`}
+                      title={isGlobalLocked ? "Sincronizzazione Globale Attiva" : "Sincronizzazione Globale Disattivata"}
+                    >
+                      {isGlobalLocked ? <Lock size={12} /> : <Unlock size={12} />}
+                    </button>
+                  </div>
+                </div>
                 {floraResult?.status === 'completed' && <CheckCircle2 className="text-green-500" size={16} />}
               </div>
               <div className="flex-1 xl:flex-none aspect-[1000/1250] lg:h-[450px] bg-white rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.08)] border border-black/[0.03] overflow-hidden relative group">
