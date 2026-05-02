@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ShieldCheck, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers } from 'lucide-react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -429,7 +429,7 @@ function App() {
 
   const [assetColors, setAssetColors] = useState<Record<string, string>>({});
 
-  const getImageAverageColor = (url: string, fileName: string): Promise<string> => {
+  const getImageAverageColor = (url: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "Anonymous";
@@ -502,7 +502,7 @@ function App() {
           const colorKey = `${selectedProductId}_${asset.path}`;
           if (!newColors[colorKey]) {
             const assetUrl = asset.fullPath.startsWith('http') ? asset.fullPath : `${config.apiUrl}${asset.fullPath}`;
-            const color = await getImageAverageColor(assetUrl, asset.name);
+            const color = await getImageAverageColor(assetUrl);
             if (color) {
               newColors[colorKey] = color;
               changed = true;
