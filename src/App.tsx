@@ -532,6 +532,8 @@ function App() {
       setTimeout(() => setFloraStatus(''), 2000);
     }
 
+    const colorsList = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA'];
+    const baseColorKeyword = colorsList.find(c => normColor.includes(c));
     setMasterConfig({ colorCode: baseColorKeyword || 'DEFAULT', isAmmaccato });
   };
 
@@ -634,18 +636,7 @@ function App() {
     Object.keys(currentSelections).forEach(cName => {
       const asset = currentSelections[cName];
       const name = asset.name.toUpperCase();
-      const fullPath = asset.fullPath.toUpperCase();
-
-      // Estraiamo l'identità del colore attuale
-      const colors = [
-        'NERO', 'BK', 'BLACK', 'WHITE', 'BIANCO', 'ORO', 'GOLD', 'SILVER', 'ARGENTO', 
-        'PNK', 'PINK', 'ROSA', 'RED', 'ROSSO', 'BLU', 'BLUE', 'GREEN', 'VERDE', 'TRASPARENTE', 'CLEAR',
-        'ARA', 'ARANCIONE', 'GIA', 'GIALLO', 'VIO', 'VIOLA', 'TIF', 'TIFFANY', 'MAG', 'MAGENTA', 'MAR', 'MARRONE', 'GRI', 'GRIGIO', 'BEI', 'BEIGE', 'OLIVA', 'OLIVE', 'LIL', 'LILLA', 'LILLABABY',
-        'COPPER', 'RAME', 'BRONZO', 'BRASS', 'OTTONE', 'CHROME', 'CROMO', 'STEEL', 'ACCIAIO'
-      ];
       const surfaceWords = ['LISCIA', 'AMMACCATA', 'LISCIO', 'AMMACCATO', 'LISCE', 'AMMACCATE', 'A', 'L', 'LISC', 'AMM'];
-      const nameParts = name.replace(/\..+$/, '').split('_');
-      const fullColorName = nameParts.length >= 2 ? nameParts.slice(1).filter(p => !surfaceWords.includes(p)).join('_') : name;
       
       const currentAssetParts = asset.name.toUpperCase().replace(/\..+$/, '').split(/[_-]/);
       const hasLRSuffix = ['L', 'A'].includes(currentAssetParts[currentAssetParts.length - 1]);

@@ -23,6 +23,7 @@ interface MockupCanvasProps {
   graphicX: number;
   centerY?: number; // Passiamo il valore esatto dall'App
   baseWidth?: number; // Passiamo il valore esatto dall'App
+  debugRect?: { x: number, y: number, w: number, h: number } | null;
 }
 
 const PRODUCT_CALIBRATION: { keywords: string[], centerY: number, baseWidth: number }[] = [
@@ -68,6 +69,7 @@ const MockupCanvas = (props: MockupCanvasProps) => {
       setLoading(true);
       const newImages: Record<string, HTMLImageElement | null> = {};
       
+      if (!product) return;
       console.log("MockupCanvas: Inizio caricamento asset per", product.id);
 
       // Load Product Components
@@ -135,12 +137,14 @@ const MockupCanvas = (props: MockupCanvasProps) => {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw Layers (Allineamento 1:1 per asset 1000x1250)
-    Object.keys(product.components).forEach(cName => {
-      const img = images[cName];
-      if (img) {
-        ctx.drawImage(img, 0, 0, 1000, 1250);
-      }
-    });
+    if (product) {
+      Object.keys(product.components).forEach(cName => {
+        const img = images[cName];
+        if (img) {
+          ctx.drawImage(img, 0, 0, 1000, 1250);
+        }
+      });
+    }
 
     // Draw Graphic Overlay
     if (images.graphic) {
