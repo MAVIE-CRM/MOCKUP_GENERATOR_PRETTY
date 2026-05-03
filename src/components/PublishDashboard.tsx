@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ExternalLink, Loader2, ChevronRight, Info } from 'lucide-react';
+import { X, CheckCircle2, ExternalLink, Loader2, ChevronRight, Info } from 'lucide-react';
 import { config } from '../config';
 
 interface PublishDashboardProps {
@@ -48,6 +48,7 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
   const [isPublishing, setIsPublishing] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [publishResult, setPublishResult] = useState<{ adminUrl: string } | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   React.useEffect(() => {
     let isMounted = true;
@@ -105,12 +106,20 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
 
   const handleStartPublish = async () => {
     setIsPublishing(true);
+    setPublishError(null);
     setLogs([]);
-    const result = await onPublish(formData, addLog);
-    if (result.success) {
-      setPublishResult(result);
+    try {
+      const result = await onPublish(formData, addLog);
+      if (result.success) {
+        setPublishResult(result);
+        setIsPublishing(false);
+      } else {
+        setPublishError(result.error || "Errore sconosciuto durante la pubblicazione");
+        // Non resettiamo isPublishing a false se c'è un errore, per lasciare i log visibili
+      }
+    } catch (err: any) {
+      setPublishError(err.message || "Errore di connessione al server");
     }
-    setIsPublishing(false);
   };
 
   const Card: React.FC<{ title?: string, children: React.ReactNode, footer?: React.ReactNode, extra?: React.ReactNode }> = ({ title, children, footer, extra }) => (
@@ -357,19 +366,44 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
 
         {/* Publishing Overlay */}
         <AnimatePresence>
-          {isPublishing && (
+          {(isPublishing || publishError) && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[60] bg-white/60 backdrop-blur-sm flex items-center justify-center">
               <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-8 max-w-md w-full text-center space-y-6">
-                <div className="relative w-16 h-16 mx-auto">
-                   <div className="absolute inset-0 border-4 border-slate-100 rounded-full" />
-                   <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
-                </div>
+                {!publishError ? (
+                  <div className="relative w-16 h-16 mx-auto">
+                    <div className="absolute inset-0 border-4 border-slate-100 rounded-full" />
+                    <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center text-red-600 mx-auto">
+                    <X size={32} />
+                  </div>
+                )}
+                
                 <div className="space-y-2">
-                  <h4 className="text-[18px] font-bold text-slate-900 uppercase tracking-tight">Pubblicazione in corso...</h4>
+                  <h4 className={`text-[18px] font-bold uppercase tracking-tight ${publishError ? 'text-red-600' : 'text-slate-900'}`}>
+                    {publishError ? 'Pubblicazione Fallita' : 'Pubblicazione in corso...'}
+                  </h4>
+                  
+                  {publishError && (
+                    <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-red-700 text-[12px] font-medium">
+                      {publishError}
+                    </div>
+                  )}
+
                   <div className="max-h-32 overflow-y-auto font-mono text-[10px] text-slate-400 bg-slate-50 p-3 rounded-lg text-left divide-y divide-slate-100">
                     {logs.map((log, i) => <div key={i} className="py-1">{log}</div>)}
                   </div>
                 </div>
+
+                {publishError && (
+                  <button 
+                    onClick={() => { setIsPublishing(false); setPublishError(null); }}
+                    className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold text-[13px] hover:bg-slate-800 transition-colors"
+                  >
+                    Chiudi e riprova
+                  </button>
+                )}
               </div>
             </motion.div>
           )}
