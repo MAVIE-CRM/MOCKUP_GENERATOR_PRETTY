@@ -69,7 +69,11 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
             productType: p.product_type || prev.productType,
             vendor: p.vendor || prev.vendor,
             tags: p.tags || prev.tags,
-            status: p.status || prev.status
+            status: p.status || prev.status,
+            // Recuperiamo le opzioni reali (Modello, Fragranza, ecc.)
+            options: p.options || [],
+            // Recuperiamo le varianti reali (Prezzi, SKU, ecc.)
+            realVariants: p.variants || []
           }));
         } else if (isMounted) {
           setFormData(prev => ({ 
@@ -221,22 +225,21 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                   </div>
                 </Card>
 
-                {/* Varianti */}
-                <Card title="Varianti" extra={<button className="text-indigo-600 text-[12px] font-medium">+ Aggiungi variante</button>}>
+                {/* Varianti Reali dal Template */}
+                <Card title="Varianti" extra={<span className="text-slate-400 text-[11px] font-medium">{formData.realVariants?.length || 0} varianti totali</span>}>
                   <div className="space-y-6">
-                    {/* Opzioni */}
+                    {/* Opzioni Dinamiche */}
                     <div className="space-y-4">
-                      {Object.entries(formData.variants).map(([key, options]) => (
-                        <div key={key} className="flex items-start gap-4 p-3 bg-slate-50/50 rounded-lg border border-slate-100">
-                          <div className="p-2 bg-white border border-slate-200 rounded text-slate-400">
-                            <MoreHorizontal size={14} className="rotate-90" />
+                      {formData.options && formData.options.map((opt: any) => (
+                        <div key={opt.id} className="flex items-start gap-4 p-3 bg-slate-50/50 rounded-lg border border-slate-100">
+                          <div className="p-2 bg-white border border-slate-200 rounded text-slate-400 text-[10px] font-bold uppercase">
+                            {opt.name}
                           </div>
-                          <div className="flex-1 space-y-2">
-                            <h4 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{key}</h4>
+                          <div className="flex-1">
                             <div className="flex flex-wrap gap-1.5">
-                              {options.map((opt, i) => (
+                              {opt.values.map((val: string, i: number) => (
                                 <span key={i} className="bg-white border border-slate-200 text-slate-700 px-2 py-1 rounded text-[11px] shadow-sm">
-                                  {opt}
+                                  {val}
                                 </span>
                               ))}
                             </div>
@@ -244,58 +247,37 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                         </div>
                       ))}
                     </div>
-                    {/* Tabella Varianti */}
+                    {/* Tabella Varianti Reali */}
                     <div className="border border-slate-200 rounded-lg overflow-hidden">
                       <table className="w-full text-[12px] text-left">
                         <thead className="bg-slate-50 border-b border-slate-200">
                           <tr>
-                            <th className="px-4 py-2 font-semibold">Variante</th>
-                            <th className="px-4 py-2 font-semibold">Prezzo</th>
-                            <th className="px-4 py-2 font-semibold">Disponibile</th>
+                            <th className="px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Titolo Variante</th>
+                            <th className="px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">Prezzo</th>
+                            <th className="px-4 py-2 font-semibold text-slate-500 uppercase tracking-wider text-[10px]">SKU</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          <tr className="bg-white">
-                            <td className="px-4 py-3 flex items-center gap-3">
-                               <div className="w-8 h-10 bg-slate-100 rounded overflow-hidden">
-                                  <img src={mockupImages[0]?.base64} className="w-full h-full object-cover" />
-                               </div>
-                               <div>
-                                  <p className="font-bold text-slate-900">Liscio</p>
-                                  <p className="text-slate-400 text-[10px]">18 varianti</p>
-                               </div>
-                            </td>
-                            <td className="px-4 py-3">
-                               <div className="flex items-center border border-slate-200 rounded px-2 py-1 w-fit bg-white">
-                                  <input type="text" value="34,90 - 44,90" className="w-24 outline-none text-[11px]" readOnly />
-                                  <span className="text-slate-400 ml-1">€</span>
-                               </div>
-                            </td>
-                            <td className="px-4 py-3 text-slate-400">18000</td>
-                          </tr>
-                          <tr className="bg-white">
-                            <td className="px-4 py-3 flex items-center gap-3">
-                               <div className="w-8 h-10 bg-slate-100 rounded overflow-hidden">
-                                  <img src={mockupImages[1]?.base64} className="w-full h-full object-cover" />
-                               </div>
-                               <div>
-                                  <p className="font-bold text-slate-900">Ammaccato</p>
-                                  <p className="text-slate-400 text-[10px]">18 varianti</p>
-                               </div>
-                            </td>
-                            <td className="px-4 py-3">
-                               <div className="flex items-center border border-slate-200 rounded px-2 py-1 w-fit bg-white">
-                                  <input type="text" value="34,90 - 44,90" className="w-24 outline-none text-[11px]" readOnly />
-                                  <span className="text-slate-400 ml-1">€</span>
-                               </div>
-                            </td>
-                            <td className="px-4 py-3 text-slate-400">17999</td>
-                          </tr>
+                          {formData.realVariants && formData.realVariants.slice(0, 10).map((v: any) => (
+                            <tr key={v.id} className="bg-white hover:bg-slate-50 transition-colors">
+                              <td className="px-4 py-3">
+                                 <p className="font-bold text-slate-900">{v.title}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                 <span className="font-mono text-indigo-600 font-bold">{v.price} €</span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">{v.sku || 'N/A'}</td>
+                            </tr>
+                          ))}
+                          {formData.realVariants?.length > 10 && (
+                            <tr className="bg-slate-50">
+                              <td colSpan={3} className="px-4 py-2 text-center text-[10px] text-slate-400 font-medium">
+                                e altre {formData.realVariants.length - 10} varianti...
+                              </td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
-                      <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
-                         <span className="text-slate-400 font-medium">Scorte totali in tutte le sedi: 35999 disponibili</span>
-                      </div>
                     </div>
                   </div>
                 </Card>
