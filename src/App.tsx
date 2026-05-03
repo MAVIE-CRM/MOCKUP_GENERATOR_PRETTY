@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers } from 'lucide-react';
+import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -7,6 +7,9 @@ import MockupCanvas from './components/MockupCanvas';
 import { floraService } from './services/flora.service';
 import type { FloraResponse } from './services/flora.service';
 import { config } from './config';
+import PublishDashboard from "./components/PublishDashboard";
+import { createProductFromMockup } from "./shopifyService";
+import { parseProductName } from "./shopifyConfig";
 
 interface GraphicAsset {
   name: string;
@@ -128,10 +131,15 @@ function App() {
   const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
+  const [showPublishDashboard, setShowPublishDashboard] = useState(false);
+  const [mockupImages, setMockupImages] = useState<{ base64: string, filename: string, alt: string }[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
   const [bulkQueue, setBulkQueue] = useState<{ id: string, surface: string }[]>([]);
   const [bulkProgress, setBulkProgress] = useState(0);
   const [bulkTotal, setBulkTotal] = useState(0);
+  const [isShopifyBulkMode, setIsShopifyBulkMode] = useState(false);
+  const [shopifyQueue, setShopifyQueue] = useState<{ id: string, product: Product, images: {base64: string, filename: string, alt: string}[], selections: any }[]>([]);
+  const [selectedQueueIndex, setSelectedQueueIndex] = useState<number | null>(null);
   const selectionsRef = useRef(selections);
   useEffect(() => { selectionsRef.current = selections; }, [selections]);
 
@@ -153,14 +161,22 @@ function App() {
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
 
-  const handleToggleBulk = (id: string, surface: string, selected: boolean) => {
+  const handleToggleBulk = (pName: string, surface: string, selected: boolean) => {
+    const upName = pName.trim().toUpperCase();
+    const relatedProducts = products.filter(p => p.name.trim().toUpperCase() === upName);
+    const relatedIds = relatedProducts.map(p => p.id);
+
     if (selected) {
       setBulkQueue(prev => {
-        if (prev.some(q => q.id === id && q.surface === surface)) return prev;
-        return [...prev, { id, surface }];
+        const otherItems = prev.filter(q => !relatedIds.includes(q.id) || q.surface !== surface);
+        const newItems = relatedIds.map(id => ({ id, surface }));
+        return [...otherItems, ...newItems];
       });
     } else {
-      setBulkQueue(prev => prev.filter(q => !(q.id === id && q.surface === surface)));
+      setBulkQueue(prev => prev.filter(q => {
+        const p = products.find(prod => prod.id === q.id);
+        return p?.name.trim().toUpperCase() !== upName || q.surface !== surface;
+      }));
     }
   };
 
@@ -169,6 +185,7 @@ function App() {
     if (!selectedGraphic) return;
     setIsBulkRunning(true);
     const originalProductId = selectedProductId;
+    const collectedShopifyItems: any[] = [];
 
     try {
       setBulkTotal(filteredBulkQueue.length);
@@ -216,7 +233,6 @@ function App() {
               const hasLRSuffix = ['L', 'A'].includes(currentAssetParts[currentAssetParts.length - 1]);
               const currentClean = currentAssetParts.filter(p => !knownPrefixes.includes(p));
               const currentPrefix = hasLRSuffix ? currentClean.slice(0, -1).join('_') : currentClean.join('_');
-              // Isolamento del colore puro: rimuoviamo sia i prefissi noti che i termini di superficie
               const currentAssetColorNorm = normalize(currentAssetParts.filter(p => !surfaceWords.includes(p) && !knownPrefixes.includes(p)).join('_'));
 
               const match = assets.find(a => {
@@ -247,16 +263,51 @@ function App() {
           }
         }
 
+        // Sincronizziamo i componenti comuni (Sticks, Tappi, etc.) se il sync globale è attivo
+        if (isGlobalLocked && id !== originalProductId) {
+          const masterS = selectionsRef.current[originalProductId] || {};
+          const product = products.find(p => p.id === id);
+          if (product) {
+            const newS = { ...(selectionsRef.current[id] || {}) };
+            let changed = false;
+
+            Object.entries(product.components).forEach(([cName, assets]) => {
+              const upCName = cName.toUpperCase();
+              const isStick = upCName.includes('STICK') || upCName.includes('BAST') || upCName.includes('LEGNO') || upCName.includes('DIFFUSORE');
+              const isTappo = upCName.includes('TAPPO') || upCName.includes('CHIUSURA') || upCName.includes('METAL');
+              
+              if (isStick || isTappo) {
+                const masterAsset = Object.entries(masterS).find(([mCName]) => {
+                  const upM = mCName.toUpperCase();
+                  return (isStick && (upM.includes('STICK') || upM.includes('BAST'))) ||
+                         (isTappo && (upM.includes('TAPPO') || upM.includes('CHIUSURA') || upM.includes('METAL')));
+                })?.[1];
+
+                if (masterAsset) {
+                  const normMaster = normalize(masterAsset.name);
+                  const match = assets.find(a => normalize(a.name) === normMaster) || assets[0];
+                  if (match.path !== newS[cName]?.path) {
+                    newS[cName] = match;
+                    changed = true;
+                  }
+                }
+              }
+            });
+
+            if (changed) {
+              setSelections(prev => ({ ...prev, [id]: newS }));
+            }
+          }
+        }
+
         // Attendiamo che il canvas si aggiorni (2.5s per sicurezza)
         await new Promise(r => setTimeout(r, 2500)); 
         
         const canvas = document.querySelector('canvas');
         if (canvas) {
           const product = products.find(p => p.id === id);
-          // Usiamo il ref per avere le selezioni AGGIORNATE dopo il cambio superficie
           const currentSelections = selectionsRef.current[id] || {};
           
-          // Identifichiamo il componente principale (Corpo/Vaso) per il naming
           const mainCompName = product ? Object.keys(product.components).find(c => {
             const n = c.toUpperCase();
             return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
@@ -267,24 +318,118 @@ function App() {
           }) || Object.keys(product.components)[0] : '';
 
           const asset = currentSelections[mainCompName];
-          const assetBaseName = asset ? asset.name.split('.')[0] : (product?.name || id);
           const graphicName = selectedGraphic.name.split('.')[0];
-          
-          // Costruiamo il nome file: NOME_ASSET_NOME_GRAFICA
-          const fileName = `${assetBaseName}_${graphicName}.jpg`.toUpperCase();
-          
-          const link = document.createElement('a');
-          link.download = fileName;
-          link.href = canvas.toDataURL('image/jpeg', 0.95);
-          link.click();
+          const assetBaseName = asset ? asset.name.replace(/\.[^/.]+$/, "") : (product?.name || id);
+          let finalFileName = '';
 
-          saveToHistory({
-            id: Math.random().toString(36).substring(7),
-            timestamp: Date.now(),
-            fileName: fileName,
-            productName: product?.name || id,
-            graphicName: graphicName,
-          });
+          const parsed = parseProductName(asset?.name || '');
+          const imagesToCapture: any[] = [];
+            
+            // LOGICA BULLETPROOF PER DOPPIO SCATTO
+            const pName = (product?.name || "").toUpperCase();
+            const isMiniOrCandle = pName.includes("MINI") || pName.includes("CANDELA");
+            
+            const isDouble = !isMiniOrCandle && ((parsed?.expectedImages === 2) || 
+                             pName.includes("PROFUMATORE") || 
+                             pName.includes("LAMPADA") || 
+                             pName.includes("VASO"));
+
+            if (isDouble) {
+              const currentColor = asset?.name.split('_')[1] || '';
+
+              // 1. CATTURA LISCIO
+              setFloraStatus(`Cattura 1/2 (LISCIO) - ${product?.name}...`);
+              setSelections(prev => {
+                const currentS = { ...(prev[id] || {}) };
+                const components = product!.components[mainCompName] || [];
+                const match = components.find(as => {
+                   const n = as.name.toUpperCase();
+                   return n.includes(currentColor.toUpperCase()) && (n.includes('_L') || n.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
+                }) || components.find(as => (as.name.toUpperCase().includes('_L') || as.fullPath.toUpperCase().includes('LISC')) && !as.name.toUpperCase().includes('_A'));
+                
+                if (match) currentS[mainCompName] = match;
+                return { ...prev, [id]: currentS };
+              });
+              
+              setMasterConfig(prev => ({ ...prev, isAmmaccato: false }));
+              await new Promise(r => setTimeout(r, 3500));
+              const canvasL = document.querySelector('canvas');
+              if (canvasL) {
+                const currentL = selectionsRef.current[id]?.[mainCompName]?.name.replace(/\.[^/.]+$/, "") || assetBaseName;
+                imagesToCapture.push({
+                  base64: canvasL.toDataURL('image/jpeg', 0.95),
+                  filename: `${currentL}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_'),
+                  alt: `${product?.name} - Liscio`
+                });
+              }
+
+              // 2. CATTURA AMMACCATO
+              setFloraStatus(`Cattura 2/2 (AMMACCATO) - ${product?.name}...`);
+              setSelections(prev => {
+                const currentS = { ...(prev[id] || {}) };
+                const components = product!.components[mainCompName] || [];
+                const match = components.find(as => {
+                   const n = as.name.toUpperCase();
+                   return n.includes(currentColor.toUpperCase()) && (n.includes('_A') || n.includes('AMM'));
+                }) || components.find(as => as.name.toUpperCase().includes('_A') || as.fullPath.toUpperCase().includes('AMM'));
+                
+                if (match) currentS[mainCompName] = match;
+                return { ...prev, [id]: currentS };
+              });
+              
+              setMasterConfig(prev => ({ ...prev, isAmmaccato: true }));
+              await new Promise(r => setTimeout(r, 3500));
+              const canvasA = document.querySelector('canvas');
+              if (canvasA) {
+                const currentA = selectionsRef.current[id]?.[mainCompName]?.name.replace(/\.[^/.]+$/, "") || assetBaseName;
+                imagesToCapture.push({
+                  base64: canvasA.toDataURL('image/jpeg', 0.95),
+                  filename: `${currentA}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_'),
+                  alt: `${product?.name} - Ammaccato`
+                });
+              }
+            } else {
+              // SINGOLO SCATTO
+              setFloraStatus(`Cattura (SINGOLO) - ${product?.name}...`);
+              await new Promise(r => setTimeout(r, 3000));
+              const canvasSingle = document.querySelector('canvas');
+              if (canvasSingle) {
+                imagesToCapture.push({
+                  base64: canvasSingle.toDataURL('image/jpeg', 0.95),
+                  filename: `${assetBaseName}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_'),
+                  alt: `${product?.name}`
+                });
+              }
+            }
+
+            // GESTIONE OUTPUT (SHOPIFY vs DOWNLOAD)
+            if (isShopifyBulkMode) {
+              collectedShopifyItems.push({
+                id: Math.random().toString(36).substring(7),
+                product: product,
+                selections: selectionsRef.current[id],
+                images: imagesToCapture
+              });
+              finalFileName = `${assetBaseName}_SHOPIFY`.toUpperCase();
+            } else {
+              for (let j = 0; j < imagesToCapture.length; j++) {
+                const img = imagesToCapture[j];
+                const link = document.createElement('a');
+                link.download = img.filename;
+                link.href = img.base64;
+                link.click();
+                if (imagesToCapture.length > 1) await new Promise(r => setTimeout(r, 600)); // Delay per evitare blocco browser
+              }
+              finalFileName = `${assetBaseName}_DOWNLOAD`.toUpperCase();
+            }
+
+            saveToHistory({
+              id: Math.random().toString(36).substring(7),
+              timestamp: Date.now(),
+              fileName: finalFileName,
+              productName: product?.name || id,
+              graphicName: graphicName,
+            });
         }
       }
     } catch (err) {
@@ -294,7 +439,90 @@ function App() {
       setIsBulkRunning(false);
       setIsBulkExportOpen(false);
       confetti({ particleCount: 200, spread: 100 });
+      
+      if (isShopifyBulkMode && collectedShopifyItems.length > 0) {
+        setShopifyQueue(collectedShopifyItems);
+        setSelectedQueueIndex(0);
+      }
     }
+  };
+
+  const collectedShopifyItems: any[] = [];
+
+  // --- LOGICA SHOPIFY ---
+
+  const fetchSvgFromOneDrive = async (filename: string) => {
+    const pass = localStorage.getItem('pretty_auth') || '';
+    const url = `${config.apiUrl}/onedrive-file/${encodeURIComponent(filename)}?token=${pass}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("SVG non trovato su OneDrive");
+    const blob = await res.blob();
+    return new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handlePublish = async (formData: any, logCallback: (msg: string) => void) => {
+    if (!selectedProduct || !selectedGraphic) return;
+    
+    // Cerchiamo l'asset principale per il parsing (Vaso/Corpo)
+    const mainComp = Object.values(selectedProduct.components)[0]?.[0];
+    const filename = mainComp ? mainComp.name : selectedProduct.id;
+    const parsed = parseProductName(filename);
+
+    return await createProductFromMockup({
+      templateId: parsed.templateId,
+      ...formData,
+      images: mockupImages,
+      svgFilename: selectedGraphic.name,
+      getBase64FromOneDrive: fetchSvgFromOneDrive,
+      color: masterConfig.colorCode || formData.color,
+      podWidth: 666,
+      podHeight: 666
+    }, logCallback);
+  };
+
+  const generateMockupsForShopify = async () => {
+    if (!selectedProduct || !selectedGraphic) return;
+    setFloraStatus('Generazione mockup per Shopify...');
+    
+    const originalSurface = masterConfig.isAmmaccato;
+    const results: { base64: string, filename: string, alt: string }[] = [];
+
+    // 1. Cattura Liscio
+    setMasterConfig(prev => ({ ...prev, isAmmaccato: false }));
+    handleSmartSwitch(); // Applica la superficie lisce
+    await new Promise(r => setTimeout(r, 2500));
+    const canvasL = document.querySelector('canvas');
+    if (canvasL) {
+      results.push({
+        base64: canvasL.toDataURL('image/jpeg', 0.9),
+        filename: 'MOCKUP_LISCIO.jpg',
+        alt: `${selectedProduct.name} - Liscio`
+      });
+    }
+
+    // 2. Cattura Ammaccato
+    setMasterConfig(prev => ({ ...prev, isAmmaccato: true }));
+    handleSmartSwitch(); // Applica la superficie ammaccata
+    await new Promise(r => setTimeout(r, 2500));
+    const canvasA = document.querySelector('canvas');
+    if (canvasA) {
+      results.push({
+        base64: canvasA.toDataURL('image/jpeg', 0.9),
+        filename: 'MOCKUP_AMMACCATO.jpg',
+        alt: `${selectedProduct.name} - Ammaccato`
+      });
+    }
+
+    // Ripristina e salva
+    setMasterConfig(prev => ({ ...prev, isAmmaccato: originalSurface }));
+    handleSmartSwitch();
+    setMockupImages(results);
+    setFloraStatus('Mockup pronti per Shopify! 🛍️');
+    setTimeout(() => setFloraStatus(''), 3000);
   };
 
   useEffect(() => {
@@ -759,6 +987,8 @@ function App() {
           setIsFloraRunning(false);
           setFloraStatus('Completato!');
           confetti({ particleCount: 200, spread: 100 });
+          // Dopo AI, genera automaticamente i mockup per Shopify
+          generateMockupsForShopify();
         } else if (result.status === 'failed') {
           setIsFloraRunning(false);
           setError(result.errorMessage || 'Errore durante la generazione AI');
@@ -947,47 +1177,122 @@ function App() {
     }
   }, [selectedGraphic, selectedProductId]);
 
-  const handleExport = () => {
+  const handleExport = async () => {
     setIsExporting(true);
+    setFloraStatus('Preparazione esportazione...');
     try {
-      const canvas = document.querySelector('canvas');
-      if (canvas && selectedProduct) {
-        const mainCompName = Object.keys(selectedProduct.components).find(c => {
-          const n = c.toUpperCase();
-          return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
-                 n.includes('PLS') || n.includes('PLL') || n.includes('PLSM') || 
-                 n.includes('PLV') || n.includes('LAMPADA') || n.includes('STRUTTURA') ||
-                 n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
-                 n.includes('BODY');
-        }) || Object.keys(selectedProduct.components)[0];
+      if (!selectedProduct) return;
 
-        const asset = selections[selectedProductId]?.[mainCompName];
-        const assetBaseName = asset ? asset.name.split('.')[0] : selectedProductId;
-        const graphicName = selectedGraphic ? selectedGraphic.name.split('.')[0] : 'default';
-        const pName = selectedProduct.name || selectedProductId;
-        
-        const fileName = `${assetBaseName}_${graphicName}.jpg`.toUpperCase();
+      const mainCompName = Object.keys(selectedProduct.components).find(c => {
+        const n = c.toUpperCase();
+        return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
+               n.includes('PLS') || n.includes('PLL') || n.includes('PLV') || 
+               n.includes('LAMPADA') || n.includes('STRUTTURA') ||
+               n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
+               n.includes('BODY');
+      }) || Object.keys(selectedProduct.components)[0];
 
-        const link = document.createElement('a');
-        link.download = fileName;
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-        link.href = dataUrl;
-        link.click();
+      const asset = selections[selectedProductId]?.[mainCompName] || 
+                    Object.values(selections[selectedProductId] || {})[0];
+      
+      const assetBaseName = asset ? asset.name.replace(/\.[^/.]+$/, "") : selectedProduct.id;
+      const graphicName = selectedGraphic?.name.split('.')[0] || 'DESIGN';
+      
+      const pName = selectedProduct.name.toUpperCase();
+      const isMiniOrCandle = pName.includes("MINI") || pName.includes("CANDELA");
 
-        saveToHistory({
-          id: Math.random().toString(36).substring(7),
-          timestamp: Date.now(),
-          fileName,
-          productName: pName,
-          graphicName,
+      const isDouble = !isMiniOrCandle && ((parsed?.expectedImages === 2) || 
+                       pName.includes("PROFUMATORE") || 
+                       pName.includes("LAMPADA") || 
+                       pName.includes("VASO"));
+
+      const imagesToDownload: { base64: string, filename: string }[] = [];
+
+      if (isDouble) {
+        const originalAmmaccato = masterConfig.isAmmaccato;
+        const currentColor = asset?.name.split('_')[1] || '';
+
+        // 1. Liscio
+        setMasterConfig(prev => ({ ...prev, isAmmaccato: false }));
+        setSelections(prev => {
+          const currentS = { ...(prev[selectedProductId] || {}) };
+          const components = selectedProduct.components[mainCompName] || [];
+          const match = components.find(as => {
+             const n = as.name.toUpperCase();
+             return n.includes(currentColor.toUpperCase()) && (n.includes('_L') || n.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
+          }) || components.find(as => (as.name.toUpperCase().includes('_L') || as.fullPath.toUpperCase().includes('LISC')) && !as.name.toUpperCase().includes('_A'));
+          
+          if (match) currentS[mainCompName] = match;
+          return { ...prev, [selectedProductId]: currentS };
         });
 
-        confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
+        handleSmartSwitch();
+        await new Promise(r => setTimeout(r, 3500));
+        const canvasL = document.querySelector('canvas');
+        if (canvasL) {
+          const assetL = selections[selectedProductId]?.[mainCompName]?.name.replace(/\.[^/.]+$/, "") || assetBaseName;
+          imagesToDownload.push({
+            base64: canvasL.toDataURL('image/jpeg', 0.95),
+            filename: `${assetL}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_')
+          });
+        }
+
+        // 2. Ammaccato
+        setMasterConfig(prev => ({ ...prev, isAmmaccato: true }));
+        setSelections(prev => {
+          const currentS = { ...(prev[selectedProductId] || {}) };
+          const components = selectedProduct.components[mainCompName] || [];
+          const match = components.find(as => {
+             const n = as.name.toUpperCase();
+             return n.includes(currentColor.toUpperCase()) && (n.includes('_A') || n.includes('AMM'));
+          }) || components.find(as => as.name.toUpperCase().includes('_A') || as.fullPath.toUpperCase().includes('AMM'));
+          
+          if (match) currentS[mainCompName] = match;
+          return { ...prev, [selectedProductId]: currentS };
+        });
+
+        handleSmartSwitch();
+        await new Promise(r => setTimeout(r, 3500));
+        const canvasA = document.querySelector('canvas');
+        if (canvasA) {
+          const assetA = selections[selectedProductId]?.[mainCompName]?.name.replace(/\.[^/.]+$/, "") || assetBaseName;
+          imagesToDownload.push({
+            base64: canvasA.toDataURL('image/jpeg', 0.95),
+            filename: `${assetA}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_')
+          });
+        }
+
+        // Ripristina
+        setMasterConfig(prev => ({ ...prev, isAmmaccato: originalAmmaccato }));
+        handleSmartSwitch();
+      } else {
+        // Singolo
+        await new Promise(r => setTimeout(r, 2000));
+        const canvas = document.querySelector('canvas');
+        if (canvas) {
+          imagesToDownload.push({
+            base64: canvas.toDataURL('image/jpeg', 0.95),
+            filename: `${assetBaseName}_${graphicName}.jpg`.toUpperCase().replace(/\s+/g, '_')
+          });
+        }
       }
+
+      // Download effettivi
+      imagesToDownload.forEach(img => {
+        const link = document.createElement('a');
+        link.download = img.filename;
+        link.href = img.base64;
+        link.click();
+      });
+
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
+      setFloraStatus('Esportazione completata! ✅');
     } catch (err) {
       console.error("Export error:", err);
+      setFloraStatus('Errore durante l\'esportazione ❌');
     } finally {
-      setTimeout(() => setIsExporting(false), 1000);
+      setIsExporting(false);
+      setTimeout(() => setFloraStatus(''), 3000);
     }
   };
 
@@ -1077,23 +1382,54 @@ function App() {
           <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-white shadow-lg">P</div>
           <h1 className="text-xs font-black uppercase tracking-tighter whitespace-nowrap">Studio Hub</h1>
         </div>
-        {products.sort((a, b) => {
-          const order = ["PROFUMATORE", "MINI", "CANDELA 220", "CANDELA 450", "VASO", "LAMPADA"];
-          const idxA = order.indexOf(a.name.toUpperCase());
-          const idxB = order.indexOf(b.name.toUpperCase());
-          if (idxA === -1 && idxB === -1) return a.name.localeCompare(b.name);
-          if (idxA === -1) return 1;
-          if (idxB === -1) return -1;
-          return idxA - idxB;
-        }).map(product => (
-          <button
-            key={product.id}
-            onClick={() => setSelectedProductId(product.id)}
-            className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${selectedProductId === product.id ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
-          >
-            {product.name}
-          </button>
-        ))}
+        <div className="flex-1 flex items-center gap-4 overflow-x-auto no-scrollbar py-2">
+          {products.sort((a, b) => {
+            const order = ["PROFUMATORE", "MINI", "CANDELA 220", "CANDELA 450", "VASO", "LAMPADA"];
+            const idxA = order.indexOf(a.name.toUpperCase());
+            const idxB = order.indexOf(b.name.toUpperCase());
+            if (idxA === -1 && idxB === -1) return a.name.localeCompare(b.name);
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return idxA - idxB;
+          }).map(product => (
+            <button
+              key={product.id}
+              onClick={() => setSelectedProductId(product.id)}
+              className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${selectedProductId === product.id ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white'}`}
+            >
+              {product.name}
+            </button>
+          ))}
+        </div>
+
+        {/* Shopify Queue Button - Moved to Top Bar */}
+        {shopifyQueue.length > 0 && (
+          <div className="pl-4 ml-2 border-l border-white/5">
+            <button 
+              onClick={() => setSelectedQueueIndex(0)}
+              className="relative p-2.5 bg-green-600 text-white rounded-xl shadow-xl shadow-green-500/20 hover:bg-green-500 transition-all group flex items-center gap-2"
+              title="Prodotti in attesa di pubblicazione"
+            >
+              <ShoppingBag size={16} />
+              <span className="text-[10px] font-black">{shopifyQueue.length}</span>
+              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-900 animate-pulse" />
+              
+              {/* Tooltip con mini-lista */}
+              <div className="absolute top-full right-0 mt-3 w-56 bg-slate-900 rounded-2xl p-2 border border-white/10 shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-y-2 group-hover:translate-y-0 z-[100]">
+                <p className="text-[7px] font-black uppercase text-white/40 px-2 py-1">In coda per Shopify</p>
+                {shopifyQueue.slice(0, 4).map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 p-1.5 rounded-lg bg-white/5 mb-1">
+                    <img src={item.images[0].base64} className="w-5 h-5 rounded object-cover" />
+                    <span className="text-[8px] font-bold text-white truncate">{item.product.name}</span>
+                  </div>
+                ))}
+                {shopifyQueue.length > 4 && (
+                  <p className="text-[7px] font-bold text-center text-green-400 py-1">+{shopifyQueue.length - 4} altri...</p>
+                )}
+              </div>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col md:flex-row overflow-hidden">
@@ -1273,12 +1609,85 @@ function App() {
           </section>
         </div>
 
-          <div className="p-5 border-t border-white/5 shrink-0 bg-slate-950/30">
-            <button onClick={handleFloraGenerate} disabled={isFloraRunning} className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 shadow-2xl shadow-indigo-500/20 active:scale-95">
-              < Wand2 size={18} /> {isFloraRunning ? 'Processing...' : 'AI Render Reality'}
-            </button>
-          </div>
-        </div>
+        {/* Shopify Queue Section */}
+        <AnimatePresence>
+          {shopifyQueue.length > 0 && (
+            <section className="p-5 border-t border-white/5 space-y-4 bg-green-500/5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-widest block text-green-400">Pronti per Shopify ({shopifyQueue.length})</label>
+                <button onClick={() => setShopifyQueue([])} className="text-[8px] font-bold text-white/20 hover:text-red-400 uppercase">Svuota</button>
+              </div>
+              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
+                {shopifyQueue.map((item, idx) => (
+                  <div key={item.id} className="bg-white/5 border border-white/5 rounded-xl p-3 flex items-center justify-between group hover:border-green-500/30 transition-all">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-black border border-white/10">
+                        <img src={item.images[0].base64} alt="" className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] font-black uppercase text-white truncate w-32">{item.product.name}</span>
+                        <span className="text-[7px] font-bold text-white/30 uppercase">{item.images[0].filename}</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedQueueIndex(idx)}
+                      className="p-2 bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600 hover:text-white transition-all shadow-lg"
+                    >
+                      <ShoppingBag size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </AnimatePresence>
+      </div>
+
+        {/* Shopify Dashboard Modal */}
+        {(showPublishDashboard || selectedQueueIndex !== null) && (
+          <PublishDashboard
+            productData={(selectedQueueIndex !== null 
+              ? parseProductName(shopifyQueue[selectedQueueIndex].images[0].filename)
+              : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '')) as any
+            }
+            mockupImages={selectedQueueIndex !== null ? shopifyQueue[selectedQueueIndex].images : mockupImages}
+            onPublish={async (formData, logCallback) => {
+              const res = await (selectedQueueIndex !== null 
+                ? createProductFromMockup({
+                    ...formData,
+                    images: shopifyQueue[selectedQueueIndex].images,
+                    svgFilename: selectedGraphic?.name || '',
+                    getBase64FromOneDrive: fetchSvgFromOneDrive,
+                  }, logCallback)
+                : handlePublish(formData, logCallback)
+              );
+              
+              if (res.success && selectedQueueIndex !== null) {
+                // Invece di rimuovere subito, potremmo voler mostrare il successo e poi "Avanti"
+                // Ma per ora seguiamo la richiesta: "Passa al prodotto successivo"
+                // Lo facciamo gestire al componente tramite un pulsante "Prossimo Prodotto"
+              }
+              return res;
+            }}
+            isQueueMode={selectedQueueIndex !== null}
+            queueProgress={selectedQueueIndex !== null ? { current: selectedQueueIndex + 1, total: shopifyQueue.length } : undefined}
+            onNext={() => {
+              if (selectedQueueIndex !== null) {
+                if (selectedQueueIndex < shopifyQueue.length - 1) {
+                  setSelectedQueueIndex(selectedQueueIndex + 1);
+                } else {
+                  setSelectedQueueIndex(null);
+                  setShopifyQueue([]); // Fine coda
+                  confetti({ particleCount: 300, spread: 150 });
+                }
+              }
+            }}
+            onClose={() => {
+              setShowPublishDashboard(false);
+              setSelectedQueueIndex(null);
+            }}
+          />
+        )}
 
         <div className="flex-1 h-full bg-[#f8f8f8] flex flex-col relative">
           {/* Top Header */}
@@ -1616,9 +2025,41 @@ function App() {
                   <h2 className="text-xl font-black uppercase tracking-tighter text-slate-900">Configura Bulk Export</h2>
                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Seleziona i prodotti per l'esportazione totale</p>
                 </div>
-                <button onClick={() => setIsBulkExportOpen(false)} disabled={isBulkRunning} className="p-3 rounded-full hover:bg-black/5 text-slate-400 transition-all">
-                  <RefreshCcw size={20} className={isBulkRunning ? 'animate-spin' : ''} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => setBulkQueue([])} 
+                    className="px-3 py-1.5 rounded-lg bg-red-500/10 text-red-600 text-[9px] font-black uppercase hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    Svuota
+                  </button>
+                  <button onClick={() => setIsBulkExportOpen(false)} disabled={isBulkRunning} className="p-3 rounded-full hover:bg-black/5 text-slate-400 transition-all">
+                    <RefreshCcw size={20} className={isBulkRunning ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Toggle Shopify Mode */}
+              <div className="px-8 py-4 bg-white border-b border-black/[0.03] flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2 rounded-lg ${isShopifyBulkMode ? 'bg-green-500/10 text-green-600' : 'bg-indigo-500/10 text-indigo-600'}`}>
+                    <ShoppingBag size={14} />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Destinazione Export</span>
+                </div>
+                <div className="flex bg-slate-100 p-1 rounded-xl">
+                  <button 
+                    onClick={() => setIsShopifyBulkMode(false)}
+                    className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${!isShopifyBulkMode ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    💾 Download
+                  </button>
+                  <button 
+                    onClick={() => setIsShopifyBulkMode(true)}
+                    className={`px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all ${isShopifyBulkMode ? 'bg-white shadow-sm text-green-600' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    🛍️ Shopify
+                  </button>
+                </div>
               </div>
               <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1628,33 +2069,7 @@ function App() {
                       const pName = p.name.trim().toUpperCase();
                       if (seenNames.has(pName)) return [];
                       seenNames.add(pName);
-                      
-                      const mainCompName = Object.keys(p.components).find(c => {
-                        const n = c.toUpperCase();
-                        return n.includes('JAR') || n.includes('BARATTOLO') || n.includes('VASO') || 
-                               n.includes('PLS') || n.includes('PLL') || n.includes('PLSM') || 
-                               n.includes('PLV') || n.includes('LAMPADA') || n.includes('STRUTTURA') ||
-                               n.includes('BOTTIGLIA') || n.includes('FLACONE') || n.includes('CONTENITORE') ||
-                               n.includes('BODY');
-                      }) || Object.keys(p.components)[0];
-
-                      const mainAssets = p.components[mainCompName] || [];
-                      const hasA = mainAssets.some(a => {
-                        const n = a.name.toUpperCase();
-                        return n.includes('_A.') || n.includes('_A_') || n.endsWith('_A') || n.includes('AMMACCATO');
-                      });
-                      const hasL = mainAssets.some(a => {
-                        const n = a.name.toUpperCase();
-                        return n.includes('_L.') || n.includes('_L_') || n.endsWith('_L') || n.includes('LISCIO');
-                      });
-
-                      if (hasA && hasL && !pName.includes('MINI')) {
-                        return [
-                          { ...p, variantId: `${p.id}_L`, variantLabel: `${p.name} Liscio`, surface: 'LISCIO' },
-                          { ...p, variantId: `${p.id}_A`, variantLabel: `${p.name} Ammaccato`, surface: 'AMMACCATO' }
-                        ];
-                      }
-                      return [{ ...p, variantId: p.id, variantLabel: p.name, surface: 'DEFAULT' }];
+                      return [{ ...p, variantId: p.id, variantLabel: pName, surface: 'DEFAULT' }];
                     });
                   })().map(p => (
                     <BulkItem 
@@ -1662,16 +2077,24 @@ function App() {
                       label={p.variantLabel} 
                       productId={p.id} 
                       surface={p.surface} 
-                      selected={bulkQueue.some(q => q.id === p.id && q.surface === p.surface)}
-                      onToggle={(sel) => handleToggleBulk(p.id, p.surface, sel)}
+                      selected={bulkQueue.some(q => {
+                        const qProd = products.find(prod => prod.id === q.id);
+                        return qProd?.name.trim().toUpperCase() === p.name.trim().toUpperCase();
+                      })}
+                      onToggle={(sel) => handleToggleBulk(p.name, p.surface, sel)}
                     />
                   ))}
                 </div>
               </div>
               <div className="p-8 bg-gray-50 border-t border-black/[0.03] flex items-center justify-between">
                 <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{filteredBulkQueue.length} Prodotti Selezionati</div>
-                <button onClick={runBulkExport} disabled={isBulkRunning || filteredBulkQueue.length === 0} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:bg-indigo-500 transition-all flex items-center gap-3">
-                  {isBulkRunning ? `Esportazione ${bulkProgress}/${bulkTotal}` : 'Avvia Bulk Export'}
+                <button onClick={runBulkExport} disabled={isBulkRunning || filteredBulkQueue.length === 0} className={`px-8 py-4 rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl transition-all flex flex-col items-center gap-1 ${isShopifyBulkMode ? 'bg-green-600 hover:bg-green-500 shadow-green-500/20 text-white' : 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20 text-white'}`}>
+                  {isBulkRunning ? (
+                    <>
+                      <span>Esportazione {bulkProgress}/{bulkTotal}</span>
+                      {floraStatus && <span className="text-[8px] opacity-70 normal-case font-bold">{floraStatus}</span>}
+                    </>
+                  ) : isShopifyBulkMode ? 'Prepara per Shopify' : 'Avvia Bulk Export'}
                 </button>
               </div>
             </motion.div>

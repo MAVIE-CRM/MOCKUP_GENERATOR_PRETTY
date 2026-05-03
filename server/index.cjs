@@ -101,6 +101,108 @@ async function startServer() {
             }
         });
 
+        // --- SHOPIFY OAUTH & PROXY ---
+        
+        let shopifyTokenCache = { token: null, expires: 0 };
+
+        async function getShopifyToken() {
+            // Se abbiamo un token diretto nell'env, usiamolo (es. shpss_ o shpat_)
+            const directToken = process.env.SHOPIFY_ACCESS_TOKEN || process.env.VITE_SHOPIFY_CLIENT_SECRET;
+            if (directToken && (directToken.startsWith('shpat_') || directToken.startsWith('shpss_'))) {
+                return directToken;
+            }
+
+            const now = Date.now();
+            if (shopifyTokenCache.token && now < shopifyTokenCache.expires) {
+                return shopifyTokenCache.token;
+            }
+
+            const shop = process.env.SHOPIFY_STORE || process.env.VITE_SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
+            const clientId = process.env.SHOPIFY_CLIENT_ID || process.env.VITE_SHOPIFY_CLIENT_ID;
+            const clientSecret = process.env.SHOPIFY_CLIENT_SECRET || process.env.VITE_SHOPIFY_CLIENT_SECRET;
+
+            if (!clientId || !clientSecret) {
+                throw new Error("Credenziali Shopify mancanti (Client ID o Secret)");
+            }
+
+            console.log(`🔑 Richiesta nuovo token Shopify via OAuth per ${shop}...`);
+            
+            try {
+                const response = await axios.post(`https://${shop}/admin/oauth/access_token`, {
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                    grant_type: 'client_credentials'
+                });
+
+                shopifyTokenCache = {
+                    token: response.data.access_token,
+                    expires: now + (1000 * 60 * 60 * 23)
+                };
+                return shopifyTokenCache.token;
+            } catch (err) {
+                console.error("❌ Errore OAuth Shopify:", err.response?.data || err.message);
+                throw new Error("Impossibile ottenere il token Shopify");
+            }
+        }
+
+        app.post('/api/shopify-publish', async (req, res) => {
+            const { action, data } = req.body;
+            const shop = process.env.SHOPIFY_STORE || process.env.VITE_SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
+            
+            try {
+                const token = await getShopifyToken();
+                const headers = { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
+                const baseUrl = `https://${shop}/admin/api/2024-01`;
+
+                if (action === 'duplicate') {
+                    const response = await axios.post(`${baseUrl}/products/${data.templateId}/duplicate.json`, {
+                        product: { title: data.title, status: 'draft' }
+                    }, { headers });
+                    return res.json(response.data);
+                }
+
+                if (action === 'get-product') {
+                    const response = await axios.get(`${baseUrl}/products/${data.productId}.json`, { headers });
+                    return res.json(response.data);
+                }
+
+                if (action === 'update-product') {
+                    const response = await axios.put(`${baseUrl}/products/${data.productId}.json`, {
+                        product: data.product
+                    }, { headers });
+                    return res.json(response.data);
+                }
+
+                if (action === 'upload-image') {
+                    const response = await axios.post(`${baseUrl}/products/${data.productId}/images.json`, {
+                        image: { attachment: data.attachment, filename: data.filename, alt: data.alt, position: data.position }
+                    }, { headers });
+                    return res.json(response.data);
+                }
+
+                if (action === 'check-file') {
+                    // Cerca il file nella Media Library (GraphQL è meglio, ma usiamo REST per ora o cerchiamo per nome)
+                    // In alternativa cerchiamo nei metafields o carichiamo sempre se non sicuro.
+                    // Per ora implementiamo il caricamento come "file" (Stage-based upload in Shopify è complesso, usiamo il trucco dell'URL)
+                    return res.json({ exists: false }); 
+                }
+
+                if (action === 'set-metafields') {
+                    for (const mf of data.metafields) {
+                        await axios.post(`${baseUrl}/products/${data.productId}/metafields.json`, {
+                            metafield: mf
+                        }, { headers });
+                    }
+                    return res.json({ success: true });
+                }
+
+                res.status(400).json({ error: 'Azione non valida' });
+            } catch (error) {
+                console.error(`Shopify Proxy Error (${action}):`, error.response?.data || error.message);
+                res.status(500).json(error.response?.data || { error: error.message });
+            }
+        });
+
         app.post('/api/flora/generate', async (req, res) => {
             try {
                 const response = await axios.post('https://api.flora.ai/v1/generate', req.body, {
