@@ -17,6 +17,10 @@
       "destination": "/server/index.cjs"
     },
     {
+      "source": "/auth/(.*)",
+      "destination": "/server/index.cjs"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
