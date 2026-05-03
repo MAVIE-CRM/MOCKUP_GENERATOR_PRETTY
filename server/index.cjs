@@ -87,15 +87,29 @@ app.get('/api/onedrive/file/:id', async (req, res) => {
 
 let shopifyTokenCache = { token: null, expires: 0 };
 async function getShopifyToken() {
-    const directToken = process.env.SHOPIFY_ACCESS_TOKEN || process.env.VITE_SHOPIFY_CLIENT_SECRET;
+    // Cerchiamo il token in tutte le possibili variabili per massima compatibilità con Railway/Vercel
+    const directToken = process.env.SHOPIFY_ACCESS_TOKEN || 
+                        process.env.SHOPIFY_CLIENT_SECRET || 
+                        process.env.VITE_SHOPIFY_CLIENT_SECRET ||
+                        process.env.VITE_SHOPIFY_ACCESS_TOKEN;
+
     if (directToken && (directToken.startsWith('shpat_') || directToken.startsWith('shpss_'))) {
+        console.log("✅ Utilizzo token Shopify diretto rilevato.");
         return directToken;
     }
+
     const now = Date.now();
     if (shopifyTokenCache.token && now < shopifyTokenCache.expires) return shopifyTokenCache.token;
+
     const shop = process.env.SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
     const clientId = process.env.SHOPIFY_CLIENT_ID;
     const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+        throw new Error("Credenziali Shopify mancanti (Client ID o Secret non trovati)");
+    }
+
+    console.log(`🔑 Richiesta nuovo token Shopify via OAuth per ${shop}...`);
     const response = await axios.post(`https://${shop}/admin/oauth/access_token`, {
         client_id: clientId,
         client_secret: clientSecret,
