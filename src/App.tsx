@@ -1874,21 +1874,23 @@ function App() {
                     </button>
                   </div>
                 </div>
-                  </div>
-                </div>
               </div>
+
               <div className="flex-1 xl:flex-none aspect-[1000/1250] lg:h-[450px] bg-white rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.08)] border border-black/[0.03] overflow-hidden relative group">
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
                   <Wand2 size={48} className="text-black/5 mb-4" />
                   <p className="text-[9px] font-bold text-black/20 uppercase tracking-[0.2em]">Reality Engine Offline</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-black/20 max-w-[150px] leading-relaxed mt-2">
+                    Pronto per la generazione AI Reality
+                  </p>
                 </div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-black/20 max-w-[150px] leading-relaxed">
-                      Pronto per la generazione AI Reality
-                    </p>
-                  </div>
-                )}
               </div>
-              {error && <div className="p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 text-[10px] font-black uppercase flex items-center gap-3"><AlertCircle size={14} /> {error}</div>}
+              
+              {error && (
+                <div className="p-4 bg-red-50 text-red-600 rounded-2xl border border-red-100 text-[10px] font-black uppercase flex items-center gap-3">
+                  <AlertCircle size={14} /> {error}
+                </div>
+              )}
             </div>
           </div>
         </div>
