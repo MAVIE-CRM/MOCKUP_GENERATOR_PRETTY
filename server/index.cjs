@@ -137,24 +137,9 @@ app.get('/api/onedrive/file/:id', async (req, res) => {
 let shopifyTokenCache = { token: null, expires: 0 };
 async function getShopifyToken() {
     // SCANSIONE TOTALE: Cerchiamo in tutte le variabili d'ambiente un valore che sembri un token Shopify
-    let directToken = process.env.SHOPIFY_ACCESS_TOKEN || 
-                      process.env.SHOPIFY_CLIENT_SECRET || 
-                      process.env.VITE_SHOPIFY_ACCESS_TOKEN ||
-                      process.env.VITE_SHOPIFY_CLIENT_SECRET;
-
-    if (!directToken) {
-        // Ultima spiaggia: cerchiamo in TUTTE le variabili se ne esiste una che inizia con shpat o shpss
-        const allKeys = Object.keys(process.env);
-        for (const key of allKeys) {
-            const val = process.env[key];
-            if (val && (val.startsWith('shpat_') || val.startsWith('shpss_'))) {
-                directToken = val;
-                console.log(`✅ Token trovato automaticamente nella variabile: ${key}`);
-                break;
-            }
-        }
-    }
-
+    // 1. Priorità assoluta al token diretto (Custom App)
+    let directToken = process.env.SHOPIFY_ACCESS_TOKEN || process.env.VITE_SHOPIFY_CLIENT_SECRET || process.env.VITE_SHOPIFY_ACCESS_TOKEN;
+    
     if (directToken && (directToken.startsWith('shpat_') || directToken.startsWith('shpss_'))) {
         return directToken;
     }
