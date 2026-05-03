@@ -329,7 +329,8 @@ function App() {
             const pName = (product?.name || "").toUpperCase();
             const isMiniOrCandle = pName.includes("MINI") || pName.includes("CANDELA");
             
-            const isDouble = !isMiniOrCandle && ((parsed?.expectedImages === 2) || 
+            const expectedImages = parsed?.expectedImages || 1;
+            const isDouble = !isMiniOrCandle && (expectedImages === 2 || 
                              pName.includes("PROFUMATORE") || 
                              pName.includes("LAMPADA") || 
                              pName.includes("VASO"));
@@ -446,8 +447,6 @@ function App() {
       }
     }
   };
-
-  const collectedShopifyItems: any[] = [];
 
   // --- LOGICA SHOPIFY ---
 
@@ -962,6 +961,7 @@ function App() {
     }
   }, [selectedGraphic]);
 
+  /*
   const handleFloraGenerate = async () => {
     setIsFloraRunning(true);
     setError(null);
@@ -978,6 +978,14 @@ function App() {
       });
 
       setFloraStatus('Generazione in corso (Flora AI)...');
+      // ... logica polling ...
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Errore AI sconosciuto');
+    } finally {
+      setIsFloraRunning(false);
+    }
+  };
+  */
 
       const poll = async () => {
         const result = await floraService.pollStatus(runId);
@@ -1195,13 +1203,15 @@ function App() {
       const asset = selections[selectedProductId]?.[mainCompName] || 
                     Object.values(selections[selectedProductId] || {})[0];
       
+      const parsed = parseProductName(asset?.name || '');
       const assetBaseName = asset ? asset.name.replace(/\.[^/.]+$/, "") : selectedProduct.id;
       const graphicName = selectedGraphic?.name.split('.')[0] || 'DESIGN';
       
       const pName = selectedProduct.name.toUpperCase();
       const isMiniOrCandle = pName.includes("MINI") || pName.includes("CANDELA");
 
-      const isDouble = !isMiniOrCandle && ((parsed?.expectedImages === 2) || 
+      const expectedImages = parsed?.expectedImages || 1;
+      const isDouble = !isMiniOrCandle && (expectedImages === 2 || 
                        pName.includes("PROFUMATORE") || 
                        pName.includes("LAMPADA") || 
                        pName.includes("VASO"));
@@ -1662,12 +1672,12 @@ function App() {
                 : handlePublish(formData, logCallback)
               );
               
-              if (res.success && selectedQueueIndex !== null) {
+              if (res && res.success && selectedQueueIndex !== null) {
                 // Invece di rimuovere subito, potremmo voler mostrare il successo e poi "Avanti"
                 // Ma per ora seguiamo la richiesta: "Passa al prodotto successivo"
                 // Lo facciamo gestire al componente tramite un pulsante "Prossimo Prodotto"
               }
-              return res;
+              return res || { success: false, error: 'Errore risposta server' };
             }}
             isQueueMode={selectedQueueIndex !== null}
             queueProgress={selectedQueueIndex !== null ? { current: selectedQueueIndex + 1, total: shopifyQueue.length } : undefined}

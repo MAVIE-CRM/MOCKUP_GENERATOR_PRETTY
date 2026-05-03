@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingBag, X, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Tag, Palette, AlignLeft, Layers, Sliders, ChevronRight } from 'lucide-react';
+import { ShoppingBag, X, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Tag, Palette, AlignLeft, Layers, ChevronRight } from 'lucide-react';
 
 interface PublishDashboardProps {
   productData: {
