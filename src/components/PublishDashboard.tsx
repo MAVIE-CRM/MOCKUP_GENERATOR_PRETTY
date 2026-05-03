@@ -61,14 +61,16 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
           })
         });
         const result = await res.json();
-        if (isMounted && result.product && result.product.body_html) {
-          setFormData(prev => {
-            if (!prev.description || prev.description.includes('ERRORE')) {
-              const cleanText = result.product.body_html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
-              return { ...prev, description: cleanText };
-            }
-            return prev;
-          });
+        if (isMounted && result.product) {
+          const p = result.product;
+          setFormData(prev => ({
+            ...prev,
+            description: p.body_html ? p.body_html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '') : prev.description,
+            productType: p.product_type || prev.productType,
+            vendor: p.vendor || prev.vendor,
+            tags: p.tags || prev.tags,
+            status: p.status || prev.status
+          }));
         } else if (isMounted) {
           setFormData(prev => ({ 
             ...prev, 
