@@ -4,6 +4,7 @@
  */
 
 import { parseProductName } from './shopifyConfig';
+import { config } from './config';
 
 interface PublishData {
   title: string;
@@ -17,7 +18,7 @@ interface PublishData {
   getBase64FromOneDrive: (filename: string) => Promise<string>;
 }
 
-const API_PATH = '/api/shopify-publish';
+const API_PATH = `${config.apiUrl}/api/shopify-publish`;
 
 /**
  * Funzione principale per la creazione del prodotto su Shopify

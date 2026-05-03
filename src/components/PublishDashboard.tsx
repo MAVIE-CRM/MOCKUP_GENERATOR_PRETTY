@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, X, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, Tag, Palette, AlignLeft, Layers, ChevronRight } from 'lucide-react';
+import { config } from '../config';
 
 interface PublishDashboardProps {
   productData: {
@@ -39,7 +40,7 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
     const fetchTemplateDescription = async () => {
       try {
         const authPass = localStorage.getItem('pretty_auth') || '';
-        const res = await fetch('/api/shopify-publish', {
+        const res = await fetch(`${config.apiUrl}/api/shopify-publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-api-key': authPass },
           body: JSON.stringify({
