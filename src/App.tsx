@@ -152,7 +152,7 @@ function App() {
   }, [bulkQueue, products]);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [error] = useState<string | null>(null);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
