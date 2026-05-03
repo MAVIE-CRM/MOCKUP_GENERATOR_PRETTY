@@ -34,7 +34,9 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
     podWidth: "666,0",
     podHeight: "666,0",
     podSvgUrl: "",
-    podSvgFile: "Button-Pla...timate.svg",
+    podSvgFile: "",
+    options: [] as any[],
+    realVariants: [] as any[],
     // Varianti Predefinite dal Template
     variants: {
       modello: ["Liscio", "Ammaccato"],
