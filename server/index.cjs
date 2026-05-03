@@ -211,6 +211,14 @@ app.post('/api/shopify-publish', async (req, res) => {
             const response = await axios.get(`${baseUrl}/products/${data.productId}/metafields.json`, { headers });
             return res.json(response.data);
         }
+        if (action === 'delete-all-images') {
+            const productRes = await axios.get(`${baseUrl}/products/${data.productId}.json`, { headers });
+            const images = productRes.data.product.images || [];
+            for (const img of images) {
+                await axios.delete(`${baseUrl}/products/${data.productId}/images/${img.id}.json`, { headers });
+            }
+            return res.json({ success: true, deletedCount: images.length });
+        }
         if (action === 'upload-file') {
             // 1. stagedUploadsCreate (GraphQL)
             const stagedResponse = await axios.post(`https://${shop}/admin/api/2024-01/graphql.json`, {

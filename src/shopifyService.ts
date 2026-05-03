@@ -56,7 +56,15 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
     const productId = dupResult.product.id;
     logCallback(`✅ Prodotto creato come BOZZA (ID: ${productId})`);
 
-    // 1.5 Aggiornamento Descrizione (Se modificata o caricata dal template)
+    // 1.2 Pulizia Immagini Vecchie (per evitare colori misti)
+    logCallback(`🧹 Rimozione vecchie immagini del template...`);
+    await fetch(API_PATH, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ action: 'delete-all-images', data: { productId } })
+    });
+
+    // 1.5 Aggiornamento Descrizione
     if (data.description) {
       logCallback(`📝 Aggiornamento descrizione prodotto...`);
       await fetch(API_PATH, {
