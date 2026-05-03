@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Download, RefreshCcw, Video, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers, ShoppingBag } from 'lucide-react';
+import { Download, RefreshCcw, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -128,7 +128,7 @@ function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [showPublishDashboard, setShowPublishDashboard] = useState(false);
-  const [mockupImages, setMockupImages] = useState<{ base64: string, filename: string, alt: string }[]>([]);
+  const [mockupImages] = useState<{ base64: string, filename: string, alt: string }[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
   const [bulkQueue, setBulkQueue] = useState<{ id: string, surface: string }[]>([]);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -152,6 +152,7 @@ function App() {
   }, [bulkQueue, products]);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
