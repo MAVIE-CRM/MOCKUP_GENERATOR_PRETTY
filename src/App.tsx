@@ -4,8 +4,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
 // I prodotti e le grafiche vengono ora caricati dinamicamente da OneDrive
-import { floraService } from './services/flora.service';
-import type { FloraResponse } from './services/flora.service';
 import { config } from './config';
 import PublishDashboard from "./components/PublishDashboard";
 import { createProductFromMockup } from "./shopifyService";
@@ -105,7 +103,6 @@ function App() {
     colorCode: string | null;
     isAmmaccato: boolean;
   }>({ colorCode: null, isAmmaccato: false });
-  const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
@@ -118,7 +115,6 @@ function App() {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibRect, setCalibRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [showDebugGrid, setShowDebugGrid] = useState(false);
   const [isGlobalLocked, setIsGlobalLocked] = useState(true);
   const [syncWarnings, setSyncWarnings] = useState<Record<string, string>>({});
@@ -127,12 +123,9 @@ function App() {
     return saved ? JSON.parse(saved) : {};
   });
 
-  const [isFloraRunning, setIsFloraRunning] = useState(false);
-  const [floraResult, setFloraResult] = useState<FloraResponse | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [showPublishDashboard, setShowPublishDashboard] = useState(false);
-  const [mockupImages, setMockupImages] = useState<{ base64: string, filename: string, alt: string }[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
   const [bulkQueue, setBulkQueue] = useState<{ id: string, surface: string }[]>([]);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -155,8 +148,7 @@ function App() {
     });
   }, [bulkQueue, products]);
 
-  const [floraStatus, setFloraStatus] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>('');
   const [history, setHistory] = useState<DownloadHistoryItem[]>([]);
 
   const selectedProduct = useMemo(() => products.find(p => p.id === selectedProductId), [products, selectedProductId]);
@@ -195,10 +187,8 @@ function App() {
         const { id, surface } = filteredBulkQueue[i];
         setBulkProgress(i + 1);
         
-        // Seleziona il prodotto
         setSelectedProductId(id);
         
-        // Forza la superficie se specificata (LISCIO/AMMACCATO)
         if (surface !== 'DEFAULT') {
           const targetIsAmmaccato = surface === 'AMMACCATO';
           const product = products.find(p => p.id === id);
@@ -210,7 +200,6 @@ function App() {
               const currentAsset = newProductSelections[cName];
               if (!currentAsset) return;
 
-              // Verifichiamo se questo specifico componente ha varianti L/A
               const hasLVariants = assets.some(a => {
                 const n = a.name.toUpperCase();
                 return n.includes('_L') || a.fullPath.toUpperCase().includes('LISC');
@@ -220,7 +209,6 @@ function App() {
                 return n.includes('_A') || a.fullPath.toUpperCase().includes('AMM');
               });
 
-              // Se il componente non ha varianti (es. Stick, Tappi specifici), non cambiamo la selezione dell'utente
               if (!hasLVariants || !hasAVariants) return;
 
               const targetSuffix = targetIsAmmaccato ? '_A' : '_L';
@@ -263,7 +251,6 @@ function App() {
           }
         }
 
-        // Sincronizziamo i componenti comuni (Sticks, Tappi, etc.) se il sync globale è attivo
         if (isGlobalLocked && id !== originalProductId) {
           const masterS = selectionsRef.current[originalProductId] || {};
           const product = products.find(p => p.id === id);
@@ -300,7 +287,6 @@ function App() {
           }
         }
 
-        // Attendiamo che il canvas si aggiorni (2.5s per sicurezza)
         await new Promise(r => setTimeout(r, 2500)); 
         
         const canvas = document.querySelector('canvas');
@@ -320,12 +306,10 @@ function App() {
           const asset = currentSelections[mainCompName];
           const graphicName = selectedGraphic.name.split('.')[0];
           const assetBaseName = asset ? asset.name.replace(/\.[^/.]+$/, "") : (product?.name || id);
-          let finalFileName = '';
-
+          
           const parsed = parseProductName(asset?.name || '');
           const imagesToCapture: any[] = [];
             
-            // LOGICA BULLETPROOF PER DOPPIO SCATTO
             const pName = (product?.name || "").toUpperCase();
             const isMiniOrCandle = pName.includes("MINI") || pName.includes("CANDELA");
             
@@ -338,8 +322,7 @@ function App() {
             if (isDouble) {
               const currentColor = asset?.name.split('_')[1] || '';
 
-              // 1. CATTURA LISCIO
-              setFloraStatus(`Cattura 1/2 (LISCIO) - ${product?.name}...`);
+              setStatusMessage(`Cattura 1/2 (LISCIO) - ${product?.name}...`);
               setSelections(prev => {
                 const currentS = { ...(prev[id] || {}) };
                 const components = product!.components[mainCompName] || [];
@@ -364,8 +347,7 @@ function App() {
                 });
               }
 
-              // 2. CATTURA AMMACCATO
-              setFloraStatus(`Cattura 2/2 (AMMACCATO) - ${product?.name}...`);
+              setStatusMessage(`Cattura 2/2 (AMMACCATO) - ${product?.name}...`);
               setSelections(prev => {
                 const currentS = { ...(prev[id] || {}) };
                 const components = product!.components[mainCompName] || [];
@@ -390,8 +372,7 @@ function App() {
                 });
               }
             } else {
-              // SINGOLO SCATTO
-              setFloraStatus(`Cattura (SINGOLO) - ${product?.name}...`);
+              setStatusMessage(`Cattura (SINGOLO) - ${product?.name}...`);
               await new Promise(r => setTimeout(r, 3000));
               const canvasSingle = document.querySelector('canvas');
               if (canvasSingle) {
@@ -403,7 +384,6 @@ function App() {
               }
             }
 
-            // GESTIONE OUTPUT (SHOPIFY vs DOWNLOAD)
             if (isShopifyBulkMode) {
               collectedShopifyItems.push({
                 id: Math.random().toString(36).substring(7),
@@ -411,7 +391,6 @@ function App() {
                 selections: selectionsRef.current[id],
                 images: imagesToCapture
               });
-              finalFileName = `${assetBaseName}_SHOPIFY`.toUpperCase();
             } else {
               for (let j = 0; j < imagesToCapture.length; j++) {
                 const img = imagesToCapture[j];
@@ -419,15 +398,14 @@ function App() {
                 link.download = img.filename;
                 link.href = img.base64;
                 link.click();
-                if (imagesToCapture.length > 1) await new Promise(r => setTimeout(r, 600)); // Delay per evitare blocco browser
+                if (imagesToCapture.length > 1) await new Promise(r => setTimeout(r, 600));
               }
-              finalFileName = `${assetBaseName}_DOWNLOAD`.toUpperCase();
             }
 
             saveToHistory({
               id: Math.random().toString(36).substring(7),
               timestamp: Date.now(),
-              fileName: finalFileName,
+              fileName: `${assetBaseName}_${isShopifyBulkMode ? 'SHOPIFY' : 'DOWNLOAD'}`,
               productName: product?.name || id,
               graphicName: graphicName,
             });
@@ -448,8 +426,6 @@ function App() {
     }
   };
 
-  // --- LOGICA SHOPIFY ---
-
   const fetchSvgFromOneDrive = async (filename: string) => {
     const pass = localStorage.getItem('pretty_auth') || '';
     const url = `${config.apiUrl}/onedrive-file/${encodeURIComponent(filename)}?token=${pass}`;
@@ -466,62 +442,20 @@ function App() {
   const handlePublish = async (formData: any, logCallback: (msg: string) => void) => {
     if (!selectedProduct || !selectedGraphic) return;
     
-    // Cerchiamo l'asset principale per il parsing (Vaso/Corpo)
     const mainComp = Object.values(selectedProduct.components)[0]?.[0];
     const filename = mainComp ? mainComp.name : selectedProduct.id;
     const parsed = parseProductName(filename);
 
     return await createProductFromMockup({
-      templateId: parsed.templateId,
+      templateId: parsed?.templateId || '',
       ...formData,
-      images: mockupImages,
+      images: [],
       svgFilename: selectedGraphic.name,
       getBase64FromOneDrive: fetchSvgFromOneDrive,
       color: masterConfig.colorCode || formData.color,
       podWidth: 666,
       podHeight: 666
     }, logCallback);
-  };
-
-  const generateMockupsForShopify = async () => {
-    if (!selectedProduct || !selectedGraphic) return;
-    setFloraStatus('Generazione mockup per Shopify...');
-    
-    const originalSurface = masterConfig.isAmmaccato;
-    const results: { base64: string, filename: string, alt: string }[] = [];
-
-    // 1. Cattura Liscio
-    setMasterConfig(prev => ({ ...prev, isAmmaccato: false }));
-    handleSmartSwitch(); // Applica la superficie lisce
-    await new Promise(r => setTimeout(r, 2500));
-    const canvasL = document.querySelector('canvas');
-    if (canvasL) {
-      results.push({
-        base64: canvasL.toDataURL('image/jpeg', 0.9),
-        filename: 'MOCKUP_LISCIO.jpg',
-        alt: `${selectedProduct.name} - Liscio`
-      });
-    }
-
-    // 2. Cattura Ammaccato
-    setMasterConfig(prev => ({ ...prev, isAmmaccato: true }));
-    handleSmartSwitch(); // Applica la superficie ammaccata
-    await new Promise(r => setTimeout(r, 2500));
-    const canvasA = document.querySelector('canvas');
-    if (canvasA) {
-      results.push({
-        base64: canvasA.toDataURL('image/jpeg', 0.9),
-        filename: 'MOCKUP_AMMACCATO.jpg',
-        alt: `${selectedProduct.name} - Ammaccato`
-      });
-    }
-
-    // Ripristina e salva
-    setMasterConfig(prev => ({ ...prev, isAmmaccato: originalSurface }));
-    handleSmartSwitch();
-    setMockupImages(results);
-    setFloraStatus('Mockup pronti per Shopify! 🛍️');
-    setTimeout(() => setFloraStatus(''), 3000);
   };
 
   useEffect(() => {
@@ -613,7 +547,6 @@ function App() {
       setLoginError(false);
       setIsLoggingIn(false);
 
-      // Deduplica i prodotti per nome (case-insensitive) per evitare doppioni nel catalogo
       const uniquePData = pData.reduce((acc, current) => {
         const name = current.name.trim().toUpperCase();
         if (!acc.find(p => p.name.trim().toUpperCase() === name)) {
@@ -914,11 +847,11 @@ function App() {
     });
 
     if (isGlobalLocked) {
-      setFloraStatus(`Sync Globale: ${fullColorName.replace(/_/g, ' ')} 🔒`);
-      setTimeout(() => setFloraStatus(''), 2000);
+      setStatusMessage(`Sync Globale: ${fullColorName.replace(/_/g, ' ')} 🔒`);
+      setTimeout(() => setStatusMessage(''), 2000);
     }
 
-    const colorsList = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA'];
+    const colorsList = ['NERO', 'BIANCO', 'ORO', 'ARGENTO', 'ROSA', 'ROSSO', 'BLU', 'VERDE', 'ARANCIO', 'GIALLO', 'VIOLA', 'TIF', 'TIFFANY', 'BEIGE', 'OLIVA', 'SALVIA', 'GRAFITE', 'BORDEAUX', 'CILIEGIA', 'COBALTO', 'CYTRON', 'MAGENTA', 'LILLA'];
     const baseColorKeyword = colorsList.find(c => normColor.includes(c));
     setMasterConfig({ colorCode: baseColorKeyword || 'DEFAULT', isAmmaccato });
   };
@@ -960,8 +893,6 @@ function App() {
       setGraphicY(0);
     }
   }, [selectedGraphic]);
-
-
 
   const handleSmartSwitch = () => {
     if (!selectedProduct || !selections[selectedProductId]) return;
@@ -2052,7 +1983,7 @@ function App() {
                   {isBulkRunning ? (
                     <>
                       <span>Esportazione {bulkProgress}/{bulkTotal}</span>
-                      {floraStatus && <span className="text-[8px] opacity-70 normal-case font-bold">{floraStatus}</span>}
+                      {statusMessage && <span className="text-[8px] opacity-70 normal-case font-bold">{statusMessage}</span>}
                     </>
                   ) : isShopifyBulkMode ? 'Prepara per Shopify' : 'Avvia Bulk Export'}
                 </button>
