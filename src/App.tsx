@@ -1112,10 +1112,20 @@ function App() {
         setSelections(prev => {
           const currentS = { ...(prev[selectedProductId] || {}) };
           const components = selectedProduct.components[mainCompName] || [];
+          
+          // Cerchiamo il LISCIO dello STESSO COLORE
           const match = components.find(as => {
              const n = as.name.toUpperCase();
-             return n.includes(currentColor.toUpperCase()) && (n.includes('_L') || n.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
-          }) || components.find(as => (as.name.toUpperCase().includes('_L') || as.fullPath.toUpperCase().includes('LISC')) && !as.name.toUpperCase().includes('_A'));
+             const f = (as.folder || '').toUpperCase();
+             const isColorMatch = n.includes(currentColor.toUpperCase()) || f.includes(currentColor.toUpperCase());
+             const isLiscio = n.includes('_L') || n.includes('LISC') || f.includes('LISC');
+             const isNotAmmaccato = !n.includes('_A') && !n.includes('AMM') && !f.includes('AMM');
+             return isColorMatch && isLiscio && isNotAmmaccato;
+          }) || components.find(as => {
+             const n = as.name.toUpperCase();
+             const f = (as.folder || '').toUpperCase();
+             return (n.includes('_L') || n.includes('LISC') || f.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
+          });
           
           if (match) currentS[mainCompName] = match;
           return { ...prev, [selectedProductId]: currentS };
@@ -1137,10 +1147,19 @@ function App() {
         setSelections(prev => {
           const currentS = { ...(prev[selectedProductId] || {}) };
           const components = selectedProduct.components[mainCompName] || [];
+          
+          // Cerchiamo l'AMMACCATO dello STESSO COLORE
           const match = components.find(as => {
              const n = as.name.toUpperCase();
-             return n.includes(currentColor.toUpperCase()) && (n.includes('_A') || n.includes('AMM'));
-          }) || components.find(as => as.name.toUpperCase().includes('_A') || as.fullPath.toUpperCase().includes('AMM'));
+             const f = (as.folder || '').toUpperCase();
+             const isColorMatch = n.includes(currentColor.toUpperCase()) || f.includes(currentColor.toUpperCase());
+             const isAmmaccato = n.includes('_A') || n.includes('AMM') || f.includes('AMM');
+             return isColorMatch && isAmmaccato;
+          }) || components.find(as => {
+             const n = as.name.toUpperCase();
+             const f = (as.folder || '').toUpperCase();
+             return n.includes('_A') || n.includes('AMM') || f.includes('AMM');
+          });
           
           if (match) currentS[mainCompName] = match;
           return { ...prev, [selectedProductId]: currentS };
