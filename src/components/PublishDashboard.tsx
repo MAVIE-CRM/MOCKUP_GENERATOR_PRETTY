@@ -419,10 +419,40 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                         <span className="text-[11px] font-mono text-slate-500 uppercase">{productData.color}</span>
                       </div>
                     </div>
-                    <button className="text-indigo-600 text-[11px] font-medium">Visualizza tutto</button>
-                  </div>
-                </Card>
+              </div>
+            </div>
 
+            {/* Shopify Style Footer */}
+            <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between md:rounded-b-xl">
+              <button 
+                onClick={onClose}
+                className="px-4 py-2 text-slate-600 font-medium text-[13px] hover:bg-slate-50 rounded-md transition-colors"
+              >
+                Chiudi
+              </button>
+              <div className="flex items-center gap-3">
+                {isQueueMode && (
+                  <span className="text-[11px] font-medium text-slate-400 mr-2">
+                    Prodotto {queueProgress?.current} di {queueProgress?.total}
+                  </span>
+                )}
+                <button
+                  onClick={handleStartPublish}
+                  disabled={isPublishing}
+                  className="px-6 py-2 bg-[#008060] text-white rounded-md font-bold text-[13px] flex items-center gap-2 hover:bg-[#006e52] transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {isPublishing ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Salvataggio...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} />
+                      Salva
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           ) : (
