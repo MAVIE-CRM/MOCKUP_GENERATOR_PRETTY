@@ -51,18 +51,29 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
     });
     
     const dupResult = await dupRes.json();
-    if (!dupRes.ok) throw new Error(`Duplicazione fallita: ${JSON.stringify(dupResult)}`);
+    console.log("Risultato duplicazione:", dupResult);
     
+    if (!dupRes.ok) {
+      const errorMsg = dupResult.error || JSON.stringify(dupResult);
+      throw new Error(`Duplicazione fallita: ${errorMsg}`);
+    }
+    
+    if (!dupResult.product || !dupResult.product.id) {
+      throw new Error(`Risposta duplicazione non valida: ${JSON.stringify(dupResult)}`);
+    }
+
     const productId = dupResult.product.id;
     logCallback(`✅ Prodotto creato come BOZZA (ID: ${productId})`);
 
-    // 1.2 Pulizia Immagini Vecchie (per evitare colori misti)
+    // 1.2 Pulizia Immagini Vecchie
     logCallback(`🧹 Rimozione vecchie immagini del template...`);
-    await fetch(API_PATH, {
+    const cleanRes = await fetch(API_PATH, {
       method: 'POST',
       headers,
       body: JSON.stringify({ action: 'delete-all-images', data: { productId } })
     });
+    const cleanResult = await cleanRes.json();
+    console.log("Risultato pulizia:", cleanResult);
 
     // 1.5 Aggiornamento Descrizione
     if (data.description) {

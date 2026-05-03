@@ -188,9 +188,11 @@ app.post('/api/shopify-publish', async (req, res) => {
         const headers = { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
         const baseUrl = `https://${shop}/admin/api/2024-01`;
         if (action === 'duplicate') {
+            console.log(`📑 Richiesta duplicazione template: ${data.templateId} per titolo: ${data.title}`);
             const response = await axios.post(`${baseUrl}/products/${data.templateId}/duplicate.json`, {
                 product: { title: data.title, status: 'draft' }
             }, { headers });
+            console.log(`✅ Duplicazione completata con successo: ${response.data.product.id}`);
             return res.json(response.data);
         }
         if (action === 'get-product') {
@@ -212,11 +214,14 @@ app.post('/api/shopify-publish', async (req, res) => {
             return res.json(response.data);
         }
         if (action === 'delete-all-images') {
+            console.log(`🧹 Richiesta pulizia immagini per prodotto: ${data.productId}`);
             const productRes = await axios.get(`${baseUrl}/products/${data.productId}.json`, { headers });
             const images = productRes.data.product.images || [];
+            console.log(`📸 Trovate ${images.length} immagini da eliminare`);
             for (const img of images) {
                 await axios.delete(`${baseUrl}/products/${data.productId}/images/${img.id}.json`, { headers });
             }
+            console.log(`✅ Pulizia completata`);
             return res.json({ success: true, deletedCount: images.length });
         }
         if (action === 'upload-file') {
