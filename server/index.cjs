@@ -179,7 +179,7 @@ app.post('/api/shopify-publish', async (req, res) => {
         axios.defaults.timeout = 60000;
         if (action === 'duplicate') {
             console.log(`🧬 Tentativo duplicazione GraphQL per template: ${data.templateId}`);
-            const query = `mutation productDuplicate($newTitle: String, $productId: ID!) {
+            const query = `mutation productDuplicate($newTitle: String!, $productId: ID!) {
                 productDuplicate(newTitle: $newTitle, productId: $productId) {
                     newProduct {
                         id
