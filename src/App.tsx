@@ -961,57 +961,7 @@ function App() {
     }
   }, [selectedGraphic]);
 
-  /*
-  const handleFloraGenerate = async () => {
-    setIsFloraRunning(true);
-    setError(null);
-    setFloraStatus('Inizializzazione AI (Upload)...');
 
-    try {
-      const canvas = document.querySelector('canvas');
-      if (!canvas) throw new Error('Canvas non trovato');
-
-      const mockupUrl = canvas.toDataURL('image/png');
-      const runId = await floraService.startGeneration({
-        image: mockupUrl,
-        technique: 'rotazione360'
-      });
-
-      setFloraStatus('Generazione in corso (Flora AI)...');
-      // ... logica polling ...
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Errore AI sconosciuto');
-    } finally {
-      setIsFloraRunning(false);
-    }
-  };
-  */
-
-      const poll = async () => {
-        const result = await floraService.pollStatus(runId);
-        setFloraResult(result);
-
-        if (result.status === 'completed') {
-          setIsFloraRunning(false);
-          setFloraStatus('Completato!');
-          confetti({ particleCount: 200, spread: 100 });
-          // Dopo AI, genera automaticamente i mockup per Shopify
-          generateMockupsForShopify();
-        } else if (result.status === 'failed') {
-          setIsFloraRunning(false);
-          setError(result.errorMessage || 'Errore durante la generazione AI');
-        } else {
-          setFloraStatus(`Generazione: ${result.progress || 0}%`);
-          setTimeout(poll, 3000);
-        }
-      };
-
-      poll();
-    } catch (err: any) {
-      setError(err.message || 'Errore di connessione');
-      setIsFloraRunning(false);
-    }
-  };
 
   const handleSmartSwitch = () => {
     if (!selectedProduct || !selections[selectedProductId]) return;
