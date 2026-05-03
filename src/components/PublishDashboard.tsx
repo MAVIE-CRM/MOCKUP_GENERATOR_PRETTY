@@ -62,7 +62,15 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
         });
         const result = await res.json();
         if (isMounted && result.product && result.product.body_html) {
-          setFormData(prev => ({ ...prev, description: result.product.body_html }));
+          // Aggiorniamo solo se la descrizione è ancora vuota o è quella di default
+          setFormData(prev => {
+            if (!prev.description || prev.description.includes('ERRORE')) {
+              // Puliamo i tag HTML per l'editing
+              const cleanText = result.product.body_html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
+              return { ...prev, description: cleanText };
+            }
+            return prev;
+          });
         }
       } catch (err: any) {
         console.error("Errore recupero template:", err);
@@ -107,11 +115,10 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
   );
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-100/90 backdrop-blur-sm overflow-hidden">
-      {/* Modal Container */}
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-100/90 backdrop-blur-sm">
       <motion.div 
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0, scale: 0.9, y: 30 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
         className="w-full h-full md:w-[95vw] md:h-[95vh] bg-slate-50 flex flex-col shadow-2xl md:rounded-xl overflow-hidden text-slate-700"
       >
         {/* Shopify Style Header */}

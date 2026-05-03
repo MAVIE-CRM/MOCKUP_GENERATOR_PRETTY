@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors'); // Force Vercel Redeploy - 2026-05-03
 const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
 require('dotenv').config();
 
 const app = express();
@@ -206,6 +207,64 @@ app.post('/api/shopify-publish', async (req, res) => {
             }, { headers });
             return res.json(response.data);
         }
+        if (action === 'upload-file') {
+            // 1. stagedUploadsCreate (GraphQL)
+            const stagedResponse = await axios.post(`https://${shop}/admin/api/2024-01/graphql.json`, {
+                query: `mutation stagedUploadsCreate($input: [StagedUploadInput!]!) {
+                    stagedUploadsCreate(input: $input) {
+                        stagedTargets {
+                            url
+                            resourceUrl
+                            parameters { name value }
+                        }
+                    }
+                }`,
+                variables: {
+                    input: [{
+                        filename: data.filename,
+                        mimeType: 'image/svg+xml',
+                        resource: 'FILE'
+                    }]
+                }
+            }, { headers: { ...headers, 'Content-Type': 'application/json' } });
+
+            const target = stagedResponse.data.data.stagedUploadsCreate.stagedTargets[0];
+            
+            // 2. Upload file a Shopify Staged Target
+            const formData = new FormData();
+            target.parameters.forEach(p => formData.append(p.name, p.value));
+            
+            // Convert base64 to Buffer
+            const buffer = Buffer.from(data.attachment, 'base64');
+            formData.append('file', buffer, { filename: data.filename, contentType: 'image/svg+xml' });
+
+            await axios.post(target.url, formData, {
+                headers: formData.getHeaders()
+            });
+
+            // 3. fileCreate (GraphQL) per rendere il file persistente
+            const fileCreateResponse = await axios.post(`https://${shop}/admin/api/2024-01/graphql.json`, {
+                query: `mutation fileCreate($files: [FileCreateInput!]!) {
+                    fileCreate(files: $files) {
+                        files {
+                            id
+                            ... on GenericFile {
+                                url
+                            }
+                        }
+                    }
+                }`,
+                variables: {
+                    files: [{
+                        originalSource: target.resourceUrl,
+                        contentType: 'FILE'
+                    }]
+                }
+            }, { headers: { ...headers, 'Content-Type': 'application/json' } });
+
+            const finalFile = fileCreateResponse.data.data.fileCreate.files[0];
+            return res.json({ success: true, file: finalFile });
+        }
         if (action === 'set-metafields') {
             for (const mf of data.metafields) {
                 await axios.post(`${baseUrl}/products/${data.productId}/metafields.json`, { metafield: mf }, { headers });
@@ -214,6 +273,7 @@ app.post('/api/shopify-publish', async (req, res) => {
         }
         res.status(400).json({ error: 'Azione non valida' });
     } catch (error) {
+        console.error("❌ Shopify API Error:", error.response?.data || error.message);
         res.status(500).json(error.response?.data || { error: error.message });
     }
 });

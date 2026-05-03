@@ -99,7 +99,37 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
     }
 
     // 3. Gestione Metafield & SVG
-    logCallback(`🧬 Configurazione Metafield POD...`);
+    logCallback(`🧬 Configurazione Metafield POD & Upload SVG...`);
+    
+    let svgUrl = "";
+    try {
+      logCallback(`   - Recupero SVG da OneDrive...`);
+      const svgBase64Full = await data.getBase64FromOneDrive(data.svgFilename);
+      const svgBase64 = svgBase64Full.split(',')[1];
+      
+      logCallback(`   - Upload SVG su Shopify CDN...`);
+      const svgRes = await fetch(API_PATH, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          action: 'upload-file',
+          data: {
+            filename: data.svgFilename,
+            attachment: svgBase64
+          }
+        })
+      });
+      const svgResult = await svgRes.json();
+      if (svgResult.success && svgResult.file && svgResult.file.url) {
+        svgUrl = svgResult.file.url;
+        logCallback(`   ✅ SVG Caricato: ${svgUrl}`);
+      } else {
+        logCallback(`   ⚠️ Upload SVG fallito, procedo senza URL...`);
+      }
+    } catch (e: any) {
+      logCallback(`   ⚠️ Errore durante gestione SVG: ${e.message}`);
+    }
+
     const metafields = [
       { namespace: "custom", key: "pod_color", value: data.color, type: "single_line_text_field" },
       { namespace: "custom", key: "pod_svg_name", value: data.svgFilename, type: "single_line_text_field" },
@@ -107,8 +137,9 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
       { namespace: "custom", key: "pod_height_mm", value: (data.podHeight || 666).toString(), type: "number_integer" }
     ];
 
-    // Caricamento SVG e URL (Simulato per ora, Shopify CDN URL verrebbe ritornato se caricato via Stages API)
-    // metafields.push({ namespace: "custom", key: "pod_svg_url", value: "https://shopify.com/cdn/placeholder.svg", type: "url" });
+    if (svgUrl) {
+      metafields.push({ namespace: "custom", key: "pod_svg_url", value: svgUrl, type: "url" });
+    }
 
     const mfRes = await fetch(API_PATH, {
       method: 'POST',
