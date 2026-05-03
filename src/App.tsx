@@ -103,6 +103,7 @@ function App() {
     colorCode: string | null;
     isAmmaccato: boolean;
   }>({ colorCode: null, isAmmaccato: false });
+  const [activeTabs, setActiveTabs] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
 
@@ -115,6 +116,7 @@ function App() {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibRect, setCalibRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [showDebugGrid, setShowDebugGrid] = useState(false);
   const [isGlobalLocked, setIsGlobalLocked] = useState(true);
   const [syncWarnings, setSyncWarnings] = useState<Record<string, string>>({});
@@ -126,6 +128,7 @@ function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [showPublishDashboard, setShowPublishDashboard] = useState(false);
+  const [mockupImages, setMockupImages] = useState<{ base64: string, filename: string, alt: string }[]>([]);
   const [isBulkRunning, setIsBulkRunning] = useState(false);
   const [bulkQueue, setBulkQueue] = useState<{ id: string, surface: string }[]>([]);
   const [bulkProgress, setBulkProgress] = useState(0);
@@ -955,9 +958,9 @@ function App() {
     
     setMasterConfig(prev => ({ ...prev, isAmmaccato: globalTarget === 'AMMACCATO' }));
     
-    setFloraStatus(`Studio Hub: -> ${globalTarget} ✨`);
+    setStatusMessage(`Studio Hub: -> ${globalTarget} ✨`);
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.8 }, colors: ['#6366f1', '#f59e0b'] });
-    setTimeout(() => setFloraStatus(''), 2000);
+    setTimeout(() => setStatusMessage(''), 2000);
   };
 
   const getProductMacroCategory = () => {
@@ -1068,7 +1071,7 @@ function App() {
 
   const handleExport = async () => {
     setIsExporting(true);
-    setFloraStatus('Preparazione esportazione...');
+    setStatusMessage('Preparazione esportazione...');
     try {
       if (!selectedProduct) return;
 
@@ -1177,13 +1180,13 @@ function App() {
       });
 
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#6366f1', '#a855f7', '#ec4899'] });
-      setFloraStatus('Esportazione completata! ✅');
+      setStatusMessage('Esportazione completata! ✅');
     } catch (err) {
       console.error("Export error:", err);
-      setFloraStatus('Errore durante l\'esportazione ❌');
+      setStatusMessage('Errore durante l\'esportazione ❌');
     } finally {
       setIsExporting(false);
-      setTimeout(() => setFloraStatus(''), 3000);
+      setTimeout(() => setStatusMessage(''), 3000);
     }
   };
 
@@ -1871,30 +1874,14 @@ function App() {
                     </button>
                   </div>
                 </div>
-                {floraResult?.status === 'completed' && <CheckCircle2 className="text-green-500" size={16} />}
+                  </div>
+                </div>
               </div>
               <div className="flex-1 xl:flex-none aspect-[1000/1250] lg:h-[450px] bg-white rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.08)] border border-black/[0.03] overflow-hidden relative group">
-                {isFloraRunning && !floraResult?.outputs && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/95 backdrop-blur-xl z-20">
-                    <div className="text-center">
-                      <div className="w-10 h-10 border-[3px] border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4 mx-auto" />
-                      <p className="text-indigo-600 font-black uppercase text-[10px] tracking-widest animate-pulse">{floraStatus}</p>
-                    </div>
-                  </div>
-                )}
-                {floraResult?.outputs?.find(o => o.type === 'imageUrl')?.url && (
-                  <img src={floraResult.outputs.find(o => o.type === 'imageUrl')?.url} className="w-full h-full object-cover shadow-2xl" alt="AI Reality" />
-                )}
-                {floraResult?.outputs?.find(o => o.type === 'videoUrl')?.url && (
-                  <div className="absolute bottom-6 right-6">
-                    <a href={floraResult.outputs.find(o => o.type === 'videoUrl')?.url} target="_blank" rel="noopener noreferrer" className="p-4 bg-indigo-600 text-white rounded-2xl shadow-2xl flex items-center gap-3 hover:scale-110 hover:rotate-2 transition-all">
-                      <Video size={20} /> <span className="font-bold text-[10px] uppercase tracking-tighter">Download 360°</span>
-                    </a>
-                  </div>
-                )}
-                {!isFloraRunning && !floraResult && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
-                    <Wand2 size={48} className="text-black/5 mb-4" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50">
+                  <Wand2 size={48} className="text-black/5 mb-4" />
+                  <p className="text-[9px] font-bold text-black/20 uppercase tracking-[0.2em]">Reality Engine Offline</p>
+                </div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-black/20 max-w-[150px] leading-relaxed">
                       Pronto per la generazione AI Reality
                     </p>
