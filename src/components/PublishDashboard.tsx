@@ -293,7 +293,12 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                     <p className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed">
                       {formData.description.replace(/<[^>]*>/g, '').slice(0, 160) || 'Ancora nessuna descrizione per questo prodotto.'}
                     </p>
-                    <p className="text-[13px] font-bold text-slate-900 mt-2">34,90 € EUR</p>
+                    <p className="text-[13px] font-bold text-slate-900 mt-2">
+                      {formData.realVariants?.length > 0 
+                        ? `${Math.min(...formData.realVariants.map((v: any) => parseFloat(v.price))).toFixed(2).replace('.', ',')} € EUR`
+                        : "34,90 € EUR"
+                      }
+                    </p>
                   </div>
                 </Card>
               </div>
