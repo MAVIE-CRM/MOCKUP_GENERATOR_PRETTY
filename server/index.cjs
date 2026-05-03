@@ -87,14 +87,26 @@ app.get('/api/onedrive/file/:id', async (req, res) => {
 
 let shopifyTokenCache = { token: null, expires: 0 };
 async function getShopifyToken() {
-    // Cerchiamo il token in tutte le possibili variabili per massima compatibilità con Railway/Vercel
-    const directToken = process.env.SHOPIFY_ACCESS_TOKEN || 
-                        process.env.SHOPIFY_CLIENT_SECRET || 
-                        process.env.VITE_SHOPIFY_CLIENT_SECRET ||
-                        process.env.VITE_SHOPIFY_ACCESS_TOKEN;
+    // SCANSIONE TOTALE: Cerchiamo in tutte le variabili d'ambiente un valore che sembri un token Shopify
+    let directToken = process.env.SHOPIFY_ACCESS_TOKEN || 
+                      process.env.SHOPIFY_CLIENT_SECRET || 
+                      process.env.VITE_SHOPIFY_ACCESS_TOKEN ||
+                      process.env.VITE_SHOPIFY_CLIENT_SECRET;
+
+    if (!directToken) {
+        // Ultima spiaggia: cerchiamo in TUTTE le variabili se ne esiste una che inizia con shpat o shpss
+        const allKeys = Object.keys(process.env);
+        for (const key of allKeys) {
+            const val = process.env[key];
+            if (val && (val.startsWith('shpat_') || val.startsWith('shpss_'))) {
+                directToken = val;
+                console.log(`✅ Token trovato automaticamente nella variabile: ${key}`);
+                break;
+            }
+        }
+    }
 
     if (directToken && (directToken.startsWith('shpat_') || directToken.startsWith('shpss_'))) {
-        console.log("✅ Utilizzo token Shopify diretto rilevato.");
         return directToken;
     }
 
@@ -102,11 +114,11 @@ async function getShopifyToken() {
     if (shopifyTokenCache.token && now < shopifyTokenCache.expires) return shopifyTokenCache.token;
 
     const shop = process.env.SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
-    const clientId = process.env.SHOPIFY_CLIENT_ID;
-    const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+    const clientId = process.env.SHOPIFY_CLIENT_ID || process.env.VITE_SHOPIFY_CLIENT_ID;
+    const clientSecret = process.env.SHOPIFY_CLIENT_SECRET || process.env.VITE_SHOPIFY_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
-        throw new Error("Credenziali Shopify mancanti (Client ID o Secret non trovati)");
+        throw new Error(`Credenziali Shopify mancanti. Assicurati di avere SHOPIFY_ACCESS_TOKEN o (CLIENT_ID e SECRET) su Railway. Variabili trovate: ${Object.keys(process.env).filter(k => k.includes('SHOPIFY')).join(', ')}`);
     }
 
     console.log(`🔑 Richiesta nuovo token Shopify via OAuth per ${shop}...`);
