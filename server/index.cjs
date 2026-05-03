@@ -178,12 +178,42 @@ app.post('/api/shopify-publish', async (req, res) => {
         const baseUrl = `https://${shop}/admin/api/2024-04`;
         axios.defaults.timeout = 60000;
         if (action === 'duplicate') {
-            console.log(`📑 Richiesta duplicazione template: ${data.templateId} per titolo: ${data.title}`);
-            const response = await axios.post(`${baseUrl}/products/${data.templateId}/duplicate.json`, {
-                product: { title: data.title }
+            console.log(`🧬 Tentativo duplicazione GraphQL per template: ${data.templateId}`);
+            const query = `mutation productDuplicate($newTitle: String, $productId: ID!) {
+                productDuplicate(newTitle: $newTitle, productId: $productId) {
+                    newProduct {
+                        id
+                        title
+                        status
+                    }
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }`;
+            const variables = {
+                productId: `gid://shopify/Product/${data.templateId}`,
+                newTitle: data.title
+            };
+
+            const response = await axios.post(`${baseUrl}/graphql.json`, { query, variables }, { headers });
+            const result = response.data.data.productDuplicate;
+
+            if (result.userErrors && result.userErrors.length > 0) {
+                console.error("❌ Errori GraphQL Duplicazione:", result.userErrors);
+                return res.status(400).json({ error: result.userErrors[0].message, details: result.userErrors });
+            }
+
+            const newProductId = result.newProduct.id.split('/').pop();
+            console.log(`✅ Duplicazione GraphQL completata: ${newProductId}`);
+
+            // Forza lo stato DRAFT se non lo è già
+            await axios.put(`${baseUrl}/products/${newProductId}.json`, {
+                product: { status: 'draft' }
             }, { headers });
-            console.log(`✅ Duplicazione completata con successo: ${response.data.product.id}`);
-            return res.json(response.data);
+
+            return res.json({ product: { id: newProductId, title: result.newProduct.title } });
         }
         if (action === 'get-product') {
             const response = await axios.get(`${baseUrl}/products/${data.productId}.json`, { headers });
