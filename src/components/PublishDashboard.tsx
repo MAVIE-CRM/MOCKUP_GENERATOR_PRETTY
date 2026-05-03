@@ -425,7 +425,6 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                 </Card>
               </div>
             </div>
-          </div>
 
           {/* Shopify Style Footer */}
             <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between md:rounded-b-xl">
