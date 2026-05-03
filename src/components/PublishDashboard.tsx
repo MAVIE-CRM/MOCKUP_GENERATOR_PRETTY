@@ -166,9 +166,10 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
         </div>
 
         {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {!publishResult ? (
-            <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <>
+              <div className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
               
               {/* Main Column */}
               <div className="lg:col-span-2 space-y-6">
@@ -457,7 +458,7 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                   )}
                 </button>
               </div>
-            </div>
+            </>
           ) : (
             /* Success State */
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-8 bg-white rounded-xl shadow-sm border border-slate-200 max-w-2xl mx-auto mt-10">
