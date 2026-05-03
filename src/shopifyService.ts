@@ -123,14 +123,33 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
       if (svgResult.success && svgResult.file && svgResult.file.url) {
         svgUrl = svgResult.file.url;
         logCallback(`   ✅ SVG Caricato: ${svgUrl}`);
-      } else {
-        logCallback(`   ⚠️ Upload SVG fallito, procedo senza URL...`);
       }
     } catch (e: any) {
       logCallback(`   ⚠️ Errore durante gestione SVG: ${e.message}`);
     }
 
-    const metafields = [
+    // RECUPERO METAFIELD DAL TEMPLATE ORIGINALE PER NON PERDERE PARAMETRI
+    let templateMetafields = [];
+    try {
+      const tmRes = await fetch(API_PATH, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ action: 'get-metafields', data: { productId: parsed.templateId } })
+      });
+      const tmData = await tmRes.json();
+      if (tmData.metafields) {
+        templateMetafields = tmData.metafields.map((mf: any) => ({
+          namespace: mf.namespace,
+          key: mf.key,
+          value: mf.value,
+          type: mf.type
+        })).filter((mf: any) => mf.namespace !== 'shopify'); // Escludiamo metafield interni
+      }
+    } catch (e) {
+      logCallback(`   ⚠️ Impossibile leggere i metafield del template, uso quelli base.`);
+    }
+
+    const newMetafields = [
       { namespace: "custom", key: "pod_color", value: data.color, type: "single_line_text_field" },
       { namespace: "custom", key: "pod_svg_name", value: data.svgFilename, type: "single_line_text_field" },
       { namespace: "custom", key: "pod_width_mm", value: (data.podWidth || 666).toString(), type: "number_integer" },
@@ -138,15 +157,26 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
     ];
 
     if (svgUrl) {
-      metafields.push({ namespace: "custom", key: "pod_svg_url", value: svgUrl, type: "url" });
+      newMetafields.push({ namespace: "custom", key: "pod_svg_url", value: svgUrl, type: "url" });
     }
+
+    // Merge: i nuovi metafield sovrascrivono quelli del template se hanno la stessa chiave
+    const mergedMetafields = [...templateMetafields];
+    newMetafields.forEach(newMf => {
+      const idx = mergedMetafields.findIndex(m => m.namespace === newMf.namespace && m.key === newMf.key);
+      if (idx !== -1) {
+        mergedMetafields[idx] = newMf;
+      } else {
+        mergedMetafields.push(newMf);
+      }
+    });
 
     const mfRes = await fetch(API_PATH, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         action: 'set-metafields',
-        data: { productId, metafields }
+        data: { productId, metafields: mergedMetafields }
       })
     });
     if (mfRes.ok) logCallback(`✅ Metafield aggiornati correttamente`);

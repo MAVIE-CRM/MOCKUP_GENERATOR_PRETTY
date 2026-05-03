@@ -207,6 +207,10 @@ app.post('/api/shopify-publish', async (req, res) => {
             }, { headers });
             return res.json(response.data);
         }
+        if (action === 'get-metafields') {
+            const response = await axios.get(`${baseUrl}/products/${data.productId}/metafields.json`, { headers });
+            return res.json(response.data);
+        }
         if (action === 'upload-file') {
             // 1. stagedUploadsCreate (GraphQL)
             const stagedResponse = await axios.post(`https://${shop}/admin/api/2024-01/graphql.json`, {
