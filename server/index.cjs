@@ -170,13 +170,17 @@ app.post('/api/shopify-publish', async (req, res) => {
     const shop = process.env.SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
     try {
         const token = await getShopifyToken();
-        const headers = { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
-        const baseUrl = `https://${shop}/admin/api/2024-01`;
-        axios.defaults.timeout = 60000; // 60 secondi di timeout per operazioni pesanti
+        const headers = { 
+            'X-Shopify-Access-Token': token, 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        const baseUrl = `https://${shop}/admin/api/2024-04`;
+        axios.defaults.timeout = 60000;
         if (action === 'duplicate') {
             console.log(`📑 Richiesta duplicazione template: ${data.templateId} per titolo: ${data.title}`);
             const response = await axios.post(`${baseUrl}/products/${data.templateId}/duplicate.json`, {
-                product: { title: data.title, status: 'draft' }
+                product: { title: data.title }
             }, { headers });
             console.log(`✅ Duplicazione completata con successo: ${response.data.product.id}`);
             return res.json(response.data);
@@ -276,8 +280,14 @@ app.post('/api/shopify-publish', async (req, res) => {
         }
         res.status(400).json({ error: 'Azione non valida' });
     } catch (error) {
-        console.error("❌ Shopify API Error:", error.response?.data || error.message);
-        res.status(500).json(error.response?.data || { error: error.message });
+        const errorData = error.response?.data;
+        const errorMessage = error.message;
+        console.error("❌ Shopify API Error Details:", JSON.stringify(errorData || errorMessage));
+        res.status(500).json({ 
+            error: errorMessage, 
+            details: errorData,
+            message: "Errore durante la comunicazione con Shopify" 
+        });
     }
 });
 

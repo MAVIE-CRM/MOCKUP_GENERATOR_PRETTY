@@ -453,7 +453,7 @@ function App() {
     return await createProductFromMockup({
       templateId: parsed?.templateId || '',
       ...formData,
-      images: [],
+      images: mockupImages, // Passiamo le immagini generate
       svgFilename: selectedGraphic.name,
       getBase64FromOneDrive: fetchSvgFromOneDrive,
       color: masterConfig.colorCode || formData.color,
