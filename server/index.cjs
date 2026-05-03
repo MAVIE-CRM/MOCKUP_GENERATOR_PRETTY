@@ -172,6 +172,7 @@ app.post('/api/shopify-publish', async (req, res) => {
         const token = await getShopifyToken();
         const headers = { 'X-Shopify-Access-Token': token, 'Content-Type': 'application/json' };
         const baseUrl = `https://${shop}/admin/api/2024-01`;
+        axios.defaults.timeout = 60000; // 60 secondi di timeout per operazioni pesanti
         if (action === 'duplicate') {
             console.log(`📑 Richiesta duplicazione template: ${data.templateId} per titolo: ${data.title}`);
             const response = await axios.post(`${baseUrl}/products/${data.templateId}/duplicate.json`, {

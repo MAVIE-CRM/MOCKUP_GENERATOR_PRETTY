@@ -25,7 +25,7 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
   const [formData, setFormData] = useState({
     title: productData.fullTitle || productData.title,
     description: "",
-    status: "active",
+    status: "draft",
     productType: "Profumi e colonie",
     vendor: "Pretty Little Scent®",
     collections: ["Profumatori", "Nuovi Arrivi", "BestSeller_Ever"],
@@ -83,12 +83,13 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
             description: `⚠️ TEMPLATE NON TROVATO\nID: ${productData.templateId}\nRisposta Server: ${JSON.stringify(result)}` 
           }));
         }
-      } catch (err: any) {
-        console.error("Errore recupero template:", err);
+      } catch (error: any) {
+        const detail = error.response?.data?.error || error.message;
+        console.error("Dettaglio Errore:", error);
         if (isMounted) {
           setFormData(prev => ({ 
             ...prev, 
-            description: `❌ ERRORE DI CONNESSIONE\nID: ${productData.templateId}\nMessaggio: ${err.message}` 
+            description: `❌ ERRORE DI CONNESSIONE\nID: ${productData.templateId}\nMessaggio: ${detail}` 
           }));
         }
       }

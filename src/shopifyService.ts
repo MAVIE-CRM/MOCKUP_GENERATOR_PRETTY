@@ -210,7 +210,9 @@ export const createProductFromMockup = async (data: PublishData, logCallback: (m
     };
 
   } catch (error: any) {
-    logCallback(`❌ ERRORE: ${error.message}`);
-    return { success: false, error: error.message };
+    const detail = error.response?.data?.error || error.message;
+    logCallback(`❌ ERRORE: ${detail}`);
+    console.error("Dettaglio Errore:", error);
+    return { success: false, error: detail };
   }
 };
