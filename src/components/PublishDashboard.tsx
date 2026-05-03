@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, ExternalLink, Loader2, Image as ImageIcon, AlignLeft, Layers, ChevronRight, Search, Globe, MoreHorizontal, Package, Info } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Loader2, ChevronRight, Info } from 'lucide-react';
 import { config } from '../config';
 
 interface PublishDashboardProps {
@@ -21,7 +21,7 @@ interface PublishDashboardProps {
   queueProgress?: { current: number, total: number };
 }
 
-const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockupImages, onPublish, onClose, onNext, isQueueMode }) => {
+const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockupImages, onPublish, onClose, onNext, isQueueMode, queueProgress }) => {
   const [formData, setFormData] = useState({
     title: productData.fullTitle || productData.title,
     description: "",
