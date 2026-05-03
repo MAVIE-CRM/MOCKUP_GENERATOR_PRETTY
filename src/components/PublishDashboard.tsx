@@ -62,18 +62,27 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
         });
         const result = await res.json();
         if (isMounted && result.product && result.product.body_html) {
-          // Aggiorniamo solo se la descrizione è ancora vuota o è quella di default
           setFormData(prev => {
             if (!prev.description || prev.description.includes('ERRORE')) {
-              // Puliamo i tag HTML per l'editing
               const cleanText = result.product.body_html.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '');
               return { ...prev, description: cleanText };
             }
             return prev;
           });
+        } else if (isMounted) {
+          setFormData(prev => ({ 
+            ...prev, 
+            description: `⚠️ TEMPLATE NON TROVATO\nID: ${productData.templateId}\nRisposta Server: ${JSON.stringify(result)}` 
+          }));
         }
       } catch (err: any) {
         console.error("Errore recupero template:", err);
+        if (isMounted) {
+          setFormData(prev => ({ 
+            ...prev, 
+            description: `❌ ERRORE DI CONNESSIONE\nID: ${productData.templateId}\nMessaggio: ${err.message}` 
+          }));
+        }
       }
     };
 
