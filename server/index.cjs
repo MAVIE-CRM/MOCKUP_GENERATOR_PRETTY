@@ -198,6 +198,17 @@ app.post('/api/shopify-publish', async (req, res) => {
             };
 
             const response = await axios.post(`${baseUrl}/graphql.json`, { query, variables }, { headers });
+            
+            if (response.data.errors) {
+                console.error("❌ Errore GraphQL (Sintassi/Auth):", response.data.errors);
+                return res.status(400).json({ error: response.data.errors[0].message, details: response.data.errors });
+            }
+
+            if (!response.data.data || !response.data.data.productDuplicate) {
+                console.error("❌ Risposta GraphQL incompleta:", response.data);
+                return res.status(500).json({ error: "Risposta Shopify non valida", details: response.data });
+            }
+
             const result = response.data.data.productDuplicate;
 
             if (result.userErrors && result.userErrors.length > 0) {
