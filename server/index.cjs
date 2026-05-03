@@ -1,5 +1,5 @@
 const express = require('express');
-const cors = require('cors');
+const cors = require('cors'); // Force Vercel Redeploy - 2026-05-03
 const path = require('path');
 const axios = require('axios');
 require('dotenv').config();
@@ -37,8 +37,56 @@ app.use('/api', authMiddleware);
 const onedrive = require('./onedrive.cjs');
 
 app.get('/', (req, res) => {
-    res.status(200).send('OK - SERVER IS ALIVE');
+    res.status(200).send('OK - SERVER IS ALIVE. Go to /auth/shopify to authenticate with Shopify.');
 });
+
+// --- SHOPIFY OAUTH FLOW ---
+app.get('/auth/shopify', (req, res) => {
+    const shop = process.env.SHOPIFY_STORE || 'prettylittle-it.myshopify.com';
+    const clientId = process.env.SHOPIFY_CLIENT_ID || '0e5d2e4d3cefc2e675b9aef9122e7027';
+    const redirectUri = process.env.SHOPIFY_REDIRECT_URI || (process.env.NODE_ENV === 'production' ? 'https://studio.prettylittle.it/auth/callback' : `http://localhost:${port}/auth/callback`);
+    const scopes = 'read_products,write_products,read_files,write_files,read_product_listings,write_product_listings';
+    const state = 'prettystudio2026';
+
+    const authUrl = `https://${shop}/admin/oauth/authorize?client_id=${clientId}&scope=${scopes}&redirect_uri=${redirectUri}&state=${state}`;
+    console.log(`🔗 Redirecting to Shopify Auth: ${authUrl}`);
+    res.redirect(authUrl);
+});
+
+app.get('/auth/callback', async (req, res) => {
+    const { shop, code, state } = req.query;
+    const clientId = process.env.SHOPIFY_CLIENT_ID || '0e5d2e4d3cefc2e675b9aef9122e7027';
+    const clientSecret = process.env.SHOPIFY_CLIENT_SECRET;
+
+    if (!code) return res.status(400).send('Missing code parameter');
+
+    try {
+        console.log(`🔄 Exchanging code for token for shop: ${shop}...`);
+        const response = await axios.post(`https://${shop}/admin/oauth/access_token`, {
+            client_id: clientId,
+            client_secret: clientSecret,
+            code
+        });
+
+        const accessToken = response.data.access_token;
+        
+        res.send(`
+            <div style="font-family: sans-serif; padding: 40px; text-align: center;">
+                <h1 style="color: #2c3e50;">✅ Autenticazione Shopify Completata!</h1>
+                <p style="font-size: 18px; color: #7f8c8d;">Copia il seguente token e aggiungilo alle variabili d'ambiente (SHOPIFY_ACCESS_TOKEN):</p>
+                <div style="background: #f4f7f6; padding: 20px; border-radius: 12px; border: 2px dashed #bdc3c7; font-family: monospace; font-size: 24px; margin: 20px 0; word-break: break-all;">
+                    ${accessToken}
+                </div>
+                <p style="color: #e74c3c; font-weight: bold;">⚠️ Non condividere questo token con nessuno.</p>
+                <button onclick="navigator.clipboard.writeText('${accessToken}')" style="background: #27ae60; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-weight: bold;">Copia negli Appunti</button>
+            </div>
+        `);
+    } catch (error) {
+        console.error("❌ Errore scambio token:", error.response?.data || error.message);
+        res.status(500).json(error.response?.data || { error: error.message });
+    }
+});
+// --- END OAUTH FLOW ---
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
