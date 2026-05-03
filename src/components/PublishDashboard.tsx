@@ -414,11 +414,9 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
                     </div>
                     <div>
                       <label className="text-[11px] font-medium text-slate-500 mb-1 block">Colore</label>
-                      <div className="flex items-center gap-3 border border-slate-300 rounded-md px-3 py-2">
-                        <div className="w-4 h-4 rounded-sm border border-slate-200" style={{ backgroundColor: productData.color }} />
-                        <span className="text-[11px] font-mono text-slate-500 uppercase">{productData.color}</span>
-                      </div>
-                    </div>
+                    <button className="text-indigo-600 text-[11px] font-medium">Visualizza tutto</button>
+                  </div>
+                </Card>
               </div>
             </div>
 
