@@ -1113,7 +1113,7 @@ function App() {
           const currentS = { ...(prev[selectedProductId] || {}) };
           const components = selectedProduct.components[mainCompName] || [];
           
-          // Cerchiamo il LISCIO dello STESSO COLORE
+          // Cerchiamo il LISCIO dello STESSO COLORE - LOGICA RIGOROSA
           const match = components.find(as => {
              const n = as.name.toUpperCase();
              const f = (as.folder || '').toUpperCase();
@@ -1121,13 +1121,11 @@ function App() {
              const isLiscio = n.includes('_L') || n.includes('LISC') || f.includes('LISC');
              const isNotAmmaccato = !n.includes('_A') && !n.includes('AMM') && !f.includes('AMM');
              return isColorMatch && isLiscio && isNotAmmaccato;
-          }) || components.find(as => {
-             const n = as.name.toUpperCase();
-             const f = (as.folder || '').toUpperCase();
-             return (n.includes('_L') || n.includes('LISC') || f.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
           });
           
           if (match) currentS[mainCompName] = match;
+          else console.warn(`⚠️ Attenzione: Impossibile trovare versione LISCIA per colore ${currentColor}`);
+          
           return { ...prev, [selectedProductId]: currentS };
         });
 
@@ -1148,20 +1146,18 @@ function App() {
           const currentS = { ...(prev[selectedProductId] || {}) };
           const components = selectedProduct.components[mainCompName] || [];
           
-          // Cerchiamo l'AMMACCATO dello STESSO COLORE
+          // Cerchiamo l'AMMACCATO dello STESSO COLORE - LOGICA RIGOROSA
           const match = components.find(as => {
              const n = as.name.toUpperCase();
              const f = (as.folder || '').toUpperCase();
              const isColorMatch = n.includes(currentColor.toUpperCase()) || f.includes(currentColor.toUpperCase());
              const isAmmaccato = n.includes('_A') || n.includes('AMM') || f.includes('AMM');
              return isColorMatch && isAmmaccato;
-          }) || components.find(as => {
-             const n = as.name.toUpperCase();
-             const f = (as.folder || '').toUpperCase();
-             return n.includes('_A') || n.includes('AMM') || f.includes('AMM');
           });
           
           if (match) currentS[mainCompName] = match;
+          else console.warn(`⚠️ Attenzione: Impossibile trovare versione AMMACCATA per colore ${currentColor}`);
+          
           return { ...prev, [selectedProductId]: currentS };
         });
 
