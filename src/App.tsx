@@ -430,11 +430,12 @@ function App() {
               productName: product?.name || id,
               graphicName: graphicName,
             });
+          }
         }
-      }
-    } catch (err) {
-      console.error("Errore durante il bulk export:", err);
-    } finally {
+      } catch (err) {
+        console.error("Errore durante il bulk export:", err);
+      } finally {
+        setSelectedQueueIndex(0);
       setSelectedProductId(originalProductId);
       setIsBulkRunning(false);
       setIsBulkExportOpen(false);
@@ -444,8 +445,6 @@ function App() {
         setShopifyQueue(prev => [...prev, ...collectedShopifyItems]);
         setIsShopifyHubOpen(true);
         setStatusMessage(`Aggiunti ${collectedShopifyItems.length} prodotti alla coda Shopify! 🚀`);
-      }
-        setSelectedQueueIndex(0);
       }
     }
   };
@@ -1522,7 +1521,7 @@ function App() {
                     )}
                   </AnimatePresence>
                 </div>
-              ))
+              ))}
             </div>
           </section>
         </div>
