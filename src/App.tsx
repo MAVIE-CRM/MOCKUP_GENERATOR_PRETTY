@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Download, RefreshCcw, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers, ShoppingBag } from 'lucide-react';
+import { Download, RefreshCcw, Wand2, AlertCircle, CheckCircle2, Search, Folder, ChevronRight, ChevronDown, Lock, Unlock, ArrowRight, History, Ruler, Save, Eye, EyeOff, Layers, ShoppingBag, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import MockupCanvas from './components/MockupCanvas';
@@ -134,8 +134,25 @@ function App() {
   const [bulkProgress, setBulkProgress] = useState(0);
   const [bulkTotal, setBulkTotal] = useState(0);
   const [isShopifyBulkMode, setIsShopifyBulkMode] = useState(false);
-  const [shopifyQueue, setShopifyQueue] = useState<{ id: string, product: Product, images: {base64: string, filename: string, alt: string}[], selections: any }[]>([]);
+  const [shopifyQueue, setShopifyQueue] = useState<{ id: string, product: Product, images: {base64: string, filename: string, alt: string}[], selections: any }[]>(() => {
+    const saved = localStorage.getItem('pretty_shopify_queue');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [publishedHistory, setPublishedHistory] = useState<{ id: string, name: string, date: number, adminUrl: string }[]>(() => {
+    const saved = localStorage.getItem('pretty_published_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [isShopifyHubOpen, setIsShopifyHubOpen] = useState(false);
   const [selectedQueueIndex, setSelectedQueueIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('pretty_shopify_queue', JSON.stringify(shopifyQueue));
+  }, [shopifyQueue]);
+
+  useEffect(() => {
+    localStorage.setItem('pretty_published_history', JSON.stringify(publishedHistory));
+  }, [publishedHistory]);
+
   const selectionsRef = useRef(selections);
   useEffect(() => { selectionsRef.current = selections; }, [selections]);
 
@@ -424,7 +441,10 @@ function App() {
       confetti({ particleCount: 200, spread: 100 });
       
       if (isShopifyBulkMode && collectedShopifyItems.length > 0) {
-        setShopifyQueue(collectedShopifyItems);
+        setShopifyQueue(prev => [...prev, ...collectedShopifyItems]);
+        setIsShopifyHubOpen(true);
+        setStatusMessage(`Aggiunti ${collectedShopifyItems.length} prodotti alla coda Shopify! 🚀`);
+      }
         setSelectedQueueIndex(0);
       }
     }
@@ -1312,25 +1332,22 @@ function App() {
           ))}
         </div>
 
-        {/* Shopify Queue Button - Moved to Top Bar */}
-        {shopifyQueue.length > 0 && (
-          <div className="pl-4 ml-2 border-l border-white/5">
-            <button 
-              onClick={() => setSelectedQueueIndex(0)}
-              className="relative p-2.5 bg-green-600 text-white rounded-xl shadow-xl shadow-green-500/20 hover:bg-green-500 transition-all group flex items-center gap-2"
-              title="Prodotti in attesa di pubblicazione"
-            >
-              <ShoppingBag size={16} />
-              <span className="text-[10px] font-black">{shopifyQueue.length}</span>
-              <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-slate-900 animate-pulse" />
-              
-              {/* Tooltip con mini-lista */}
-              <div className="absolute top-full right-0 mt-3 w-56 bg-slate-900 rounded-2xl p-2 border border-white/10 shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all translate-y-2 group-hover:translate-y-0 z-[100]">
-                <p className="text-[7px] font-black uppercase text-white/40 px-2 py-1">In coda per Shopify</p>
-                {shopifyQueue.slice(0, 4).map((item, i) => (
-                  <div key={i} className="flex items-center gap-2 p-1.5 rounded-lg bg-white/5 mb-1">
-                    <img src={item.images[0].base64} className="w-5 h-5 rounded object-cover" />
-                    <span className="text-[8px] font-bold text-white truncate">{item.product.name}</span>
+        {/* Shopify Hub Button */}
+        <div className="pl-4 ml-2 border-l border-white/5">
+          <button 
+            onClick={() => setIsShopifyHubOpen(true)}
+            className={`relative p-2.5 ${shopifyQueue.length > 0 ? 'bg-indigo-600 shadow-indigo-500/20' : 'bg-white/5'} text-white rounded-xl shadow-xl hover:bg-indigo-500 transition-all group flex items-center gap-2`}
+            title="Shopify Hub - Gestione Pubblicazione"
+          >
+            <ShoppingBag size={16} />
+            {shopifyQueue.length > 0 && (
+              <>
+                <span className="text-[10px] font-black">{shopifyQueue.length}</span>
+                <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-slate-900 animate-pulse" />
+              </>
+            )}
+          </button>
+        </div>
                   </div>
                 ))}
                 {shopifyQueue.length > 4 && (
@@ -1520,35 +1537,132 @@ function App() {
         </div>
 
         {/* Shopify Queue Section */}
+        {/* Shopify Hub Panel */}
         <AnimatePresence>
-          {shopifyQueue.length > 0 && (
-            <section className="p-5 border-t border-white/5 space-y-4 bg-green-500/5">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-black uppercase tracking-widest block text-green-400">Pronti per Shopify ({shopifyQueue.length})</label>
-                <button onClick={() => setShopifyQueue([])} className="text-[8px] font-bold text-white/20 hover:text-red-400 uppercase">Svuota</button>
-              </div>
-              <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar pr-2">
-                {shopifyQueue.map((item, idx) => (
-                  <div key={item.id} className="bg-white/5 border border-white/5 rounded-xl p-3 flex items-center justify-between group hover:border-green-500/30 transition-all">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg overflow-hidden bg-black border border-white/10">
-                        <img src={item.images[0].base64} alt="" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black uppercase text-white truncate w-32">{item.product.name}</span>
-                        <span className="text-[7px] font-bold text-white/30 uppercase">{item.images[0].filename}</span>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => setSelectedQueueIndex(idx)}
-                      className="p-2 bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600 hover:text-white transition-all shadow-lg"
-                    >
-                      <ShoppingBag size={14} />
-                    </button>
+          {isShopifyHubOpen && (
+            <motion.div 
+              initial={{ opacity: 0, x: 400 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 400 }}
+              className="fixed top-0 right-0 h-full w-[400px] bg-slate-900 border-l border-white/10 z-[100] shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg">
+                    <ShoppingBag className="text-white" size={20} />
                   </div>
+                  <div>
+                    <h3 className="text-[14px] font-black uppercase tracking-tight">Shopify Hub</h3>
+                    <p className="text-[9px] font-bold text-white/30 uppercase tracking-widest">Gestione Pubblicazione</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsShopifyHubOpen(false)}
+                  className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all"
+                >
+                  <RefreshCcw size={18} className="text-white/40" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex p-2 bg-black/20 m-4 rounded-xl gap-1">
+                {['da pubblicare', 'pubblicati'].map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setActiveTabs(prev => ({ ...prev, shopifyHub: t }))}
+                    className={`flex-1 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${ (activeTabs.shopifyHub || 'da pubblicare') === t ? 'bg-indigo-600 text-white shadow-lg' : 'text-white/30 hover:text-white' }`}
+                  >
+                    {t}
+                  </button>
                 ))}
               </div>
-            </section>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 no-scrollbar">
+                {(activeTabs.shopifyHub || 'da pubblicare') === 'da pubblicare' ? (
+                  <>
+                    {shopifyQueue.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-20 p-10">
+                        <ShoppingBag size={48} className="mb-4" />
+                        <p className="text-[10px] font-black uppercase">Coda Vuota</p>
+                      </div>
+                    ) : (
+                      shopifyQueue.map((item, idx) => (
+                        <motion.div 
+                          key={item.id}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="group bg-white/5 border border-white/5 rounded-2xl p-3 hover:bg-white/10 transition-all cursor-pointer relative overflow-hidden"
+                          onClick={() => {
+                            setSelectedQueueIndex(idx);
+                            setIsShopifyHubOpen(false);
+                          }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden bg-black shrink-0">
+                              <img src={item.images[0].base64} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-[11px] font-black text-white truncate uppercase tracking-tight">{item.product.name}</h4>
+                              <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">{item.images.length} Mockup • Pronto</p>
+                            </div>
+                            <div className="w-8 h-8 rounded-lg bg-indigo-600/20 text-indigo-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+                              <ArrowRight size={14} />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {publishedHistory.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center text-center opacity-20 p-10">
+                        <CheckCircle2 size={48} className="mb-4" />
+                        <p className="text-[10px] font-black uppercase">Nessun Prodotto Pubblicato</p>
+                      </div>
+                    ) : (
+                      publishedHistory.map((item) => (
+                        <div key={item.id} className="bg-white/[0.03] border border-white/5 rounded-2xl p-3 flex items-center gap-3">
+                          <div className="w-10 h-10 bg-green-500/10 text-green-500 rounded-xl flex items-center justify-center shrink-0">
+                            <CheckCircle2 size={20} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-[11px] font-black text-white truncate uppercase tracking-tight">{item.name}</h4>
+                            <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest">
+                              {new Date(item.date).toLocaleDateString()} • Shopify
+                            </p>
+                          </div>
+                          <a 
+                            href={item.adminUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 hover:text-white flex items-center justify-center transition-all"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        </div>
+                      ))
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 bg-black/40 border-t border-white/5">
+                {(activeTabs.shopifyHub || 'da pubblicare') === 'da pubblicare' && shopifyQueue.length > 1 && (
+                  <button 
+                    onClick={() => {
+                      setSelectedQueueIndex(0);
+                      setIsShopifyHubOpen(false);
+                    }}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-[0.2em] shadow-xl shadow-indigo-600/20 hover:bg-indigo-500 transition-all flex items-center justify-center gap-2"
+                  >
+                    Pubblica Tutto <Layers size={16} />
+                  </button>
+                )}
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -1572,24 +1686,30 @@ function App() {
                 : handlePublish(formData, logCallback)
               );
               
-              if (res && res.success && selectedQueueIndex !== null) {
-                // Invece di rimuovere subito, potremmo voler mostrare il successo e poi "Avanti"
-                // Ma per ora seguiamo la richiesta: "Passa al prodotto successivo"
-                // Lo facciamo gestire al componente tramite un pulsante "Prossimo Prodotto"
+              if (res && res.success) {
+                // Aggiungi allo storico dei pubblicati
+                setPublishedHistory(prev => [{
+                  id: Math.random().toString(36).substring(7),
+                  name: formData.title,
+                  date: Date.now(),
+                  adminUrl: (res as any).adminUrl || '#'
+                }, ...prev]);
+
+                // Se era in coda, rimuovilo dalla coda
+                if (selectedQueueIndex !== null) {
+                  setShopifyQueue(prev => prev.filter((_, i) => i !== selectedQueueIndex));
+                }
               }
               return res || { success: false, error: 'Errore risposta server' };
             }}
             isQueueMode={selectedQueueIndex !== null}
             queueProgress={selectedQueueIndex !== null ? { current: selectedQueueIndex + 1, total: shopifyQueue.length } : undefined}
             onNext={() => {
-              if (selectedQueueIndex !== null) {
-                if (selectedQueueIndex < shopifyQueue.length - 1) {
-                  setSelectedQueueIndex(selectedQueueIndex + 1);
-                } else {
-                  setSelectedQueueIndex(null);
-                  setShopifyQueue([]); // Fine coda
-                  confetti({ particleCount: 300, spread: 150 });
-                }
+              if (shopifyQueue.length > 0) {
+                setSelectedQueueIndex(0);
+              } else {
+                setSelectedQueueIndex(null);
+                confetti({ particleCount: 300, spread: 150 });
               }
             }}
             onClose={() => {
