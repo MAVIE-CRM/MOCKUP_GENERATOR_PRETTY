@@ -78,10 +78,10 @@ const normalize = (c: string) => {
   if (s === 'VERDE' || s === 'GREEN') return 'VERDE';
   if (s === 'BLU' || s === 'BLUE') return 'BLU';
   if (s === 'VIOLA' || s === 'VIOLET' || s === 'VIO') return 'VIOLA';
-  if (s === 'LILLABABY') return 'LILLABABY';
-  if (s === 'LILLA' || s === 'LIL' || s === 'MALVA') return 'LILLA';
-  if (s === 'ORO' || s === 'GOLD' || s === 'COPPER' || s === 'RAME' || s === 'BRONZO' || s === 'BRASS' || s === 'OTTONE') return 'ORO';
-  if (s === 'ARGENTO' || s === 'SILVER' || s === 'CHROME' || s === 'CROMO' || s === 'STEEL' || s === 'ACCIAIO') return 'ARGENTO';
+  if (s.includes('MENTA')) return 'MENTA';
+  if (s.includes('AZZUR')) return 'AZZURRO';
+  if (s.includes('ORO') || s.includes('GOLD') || s.includes('COPPER') || s.includes('RAME') || s.includes('BRONZO') || s.includes('BRASS') || s.includes('OTTONE')) return 'ORO';
+  if (s.includes('ARGENTO') || s.includes('SILVER') || s.includes('CHROME') || s.includes('CROMO') || s.includes('STEEL') || s.includes('ACCIAIO')) return 'ARGENTO';
   return s;
 };
 
@@ -341,7 +341,8 @@ function App() {
                              pName.includes("VASO"));
 
             if (isDouble) {
-              const currentColor = asset?.name.split('_')[1] || '';
+              const currentColorPart = asset?.name.replace(/\.[^/.]+$/, "").split(/[_-]/)[1] || '';
+              const targetColorNorm = normalize(currentColorPart);
 
               setStatusMessage(`Cattura 1/2 (LISCIO) - ${product?.name}...`);
               setSelections(prev => {
@@ -349,7 +350,11 @@ function App() {
                 const components = product!.components[mainCompName] || [];
                 const match = components.find(as => {
                    const n = as.name.toUpperCase();
-                   return n.includes(currentColor.toUpperCase()) && (n.includes('_L') || n.includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
+                   const parts = as.name.replace(/\.[^/.]+$/, "").split(/[_-]/);
+                   const colorPart = parts[1] || '';
+                   const isColor = normalize(colorPart) === targetColorNorm || n.includes(targetColorNorm);
+                   const isSurface = (n.includes('_L') || as.fullPath.toUpperCase().includes('LISC')) && !n.includes('_A') && !n.includes('AMM');
+                   return isColor && isSurface;
                 }) || components.find(as => (as.name.toUpperCase().includes('_L') || as.fullPath.toUpperCase().includes('LISC')) && !as.name.toUpperCase().includes('_A'));
                 
                 if (match) currentS[mainCompName] = match;
@@ -374,7 +379,11 @@ function App() {
                 const components = product!.components[mainCompName] || [];
                 const match = components.find(as => {
                    const n = as.name.toUpperCase();
-                   return n.includes(currentColor.toUpperCase()) && (n.includes('_A') || n.includes('AMM'));
+                   const parts = as.name.replace(/\.[^/.]+$/, "").split(/[_-]/);
+                   const colorPart = parts[1] || '';
+                   const isColor = normalize(colorPart) === targetColorNorm || n.includes(targetColorNorm);
+                   const isSurface = (n.includes('_A') || as.fullPath.toUpperCase().includes('AMM'));
+                   return isColor && isSurface;
                 }) || components.find(as => as.name.toUpperCase().includes('_A') || as.fullPath.toUpperCase().includes('AMM'));
                 
                 if (match) currentS[mainCompName] = match;
