@@ -1522,7 +1522,7 @@ function App() {
                     )}
                   </AnimatePresence>
                 </div>
-              ))}
+              ))
             </div>
           </section>
         </div>
@@ -2107,8 +2107,6 @@ function App() {
           </div>
         )}
       </AnimatePresence>
-        </div>
-      </div>
     </div>
   );
 }
