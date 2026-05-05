@@ -1677,9 +1677,9 @@ function App() {
         {(showPublishDashboard || selectedQueueIndex !== null) && (
           <PublishDashboard
             productData={(() => {
-              const baseData = selectedQueueIndex !== null 
+              const baseData = (selectedQueueIndex !== null 
                 ? parseProductName(shopifyQueue[selectedQueueIndex].images[0].filename)
-                : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '');
+                : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '')) || { title: 'Nuovo Prodotto', fullTitle: 'Nuovo Prodotto', color: '#000', templateId: '', categoryName: 'Generale', graphicName: 'Default', expectedImages: 1 };
               
               if (selectedQueueIndex !== null) {
                 return {

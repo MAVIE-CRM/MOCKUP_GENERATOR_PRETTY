@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle2, ExternalLink, Loader2, ChevronRight, Info } from 'lucide-react';
+import { CheckCircle2, ExternalLink, Loader2, ChevronRight, Save, ShoppingBag, AlertCircle } from 'lucide-react';
 import { config } from '../config';
 
 interface PublishDashboardProps {
@@ -425,7 +425,5 @@ const PublishDashboard: React.FC<PublishDashboardProps> = ({ productData, mockup
     </div>
   );
 };
-
-export default PublishDashboard;
 
 export default PublishDashboard;
