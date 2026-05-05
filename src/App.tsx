@@ -134,7 +134,14 @@ function App() {
   const [bulkProgress, setBulkProgress] = useState(0);
   const [bulkTotal, setBulkTotal] = useState(0);
   const [isShopifyBulkMode, setIsShopifyBulkMode] = useState(false);
-  const [shopifyQueue, setShopifyQueue] = useState<{ id: string, product: Product, images: {base64: string, filename: string, alt: string}[], selections: any }[]>(() => {
+  const [shopifyQueue, setShopifyQueue] = useState<{ 
+    id: string, 
+    product: Product, 
+    images: {base64: string, filename: string, alt: string}[], 
+    selections: any,
+    customTitle?: string,
+    customDescription?: string
+  }[]>(() => {
     const saved = localStorage.getItem('pretty_shopify_queue');
     return saved ? JSON.parse(saved) : [];
   });
@@ -1669,10 +1676,35 @@ function App() {
         {/* Shopify Dashboard Modal */}
         {(showPublishDashboard || selectedQueueIndex !== null) && (
           <PublishDashboard
-            productData={((selectedQueueIndex !== null 
-              ? parseProductName(shopifyQueue[selectedQueueIndex].images[0].filename)
-              : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '')) as any)}
+            productData={(() => {
+              const baseData = selectedQueueIndex !== null 
+                ? parseProductName(shopifyQueue[selectedQueueIndex].images[0].filename)
+                : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '');
+              
+              if (selectedQueueIndex !== null) {
+                return {
+                  ...baseData,
+                  fullTitle: shopifyQueue[selectedQueueIndex].customTitle || baseData.fullTitle,
+                  description: shopifyQueue[selectedQueueIndex].customDescription
+                };
+              }
+              return baseData;
+            })() as any}
             mockupImages={selectedQueueIndex !== null ? shopifyQueue[selectedQueueIndex].images : mockupImages}
+            onSave={(updatedData) => {
+              if (selectedQueueIndex !== null) {
+                setShopifyQueue(prev => {
+                  const newQueue = [...prev];
+                  newQueue[selectedQueueIndex] = {
+                    ...newQueue[selectedQueueIndex],
+                    customTitle: updatedData.title,
+                    customDescription: updatedData.description
+                  };
+                  return newQueue;
+                });
+                setStatusMessage("Bozza salvata localmente! ✅");
+              }
+            }}
             onPublish={async (formData, logCallback) => {
               const res = await (selectedQueueIndex !== null 
                 ? createProductFromMockup({
