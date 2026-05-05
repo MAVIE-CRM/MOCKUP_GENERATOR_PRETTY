@@ -1348,15 +1348,6 @@ function App() {
             )}
           </button>
         </div>
-                  </div>
-                ))}
-                {shopifyQueue.length > 4 && (
-                  <p className="text-[7px] font-bold text-center text-green-400 py-1">+{shopifyQueue.length - 4} altri...</p>
-                )}
-              </div>
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="flex flex-1 flex-col md:flex-row overflow-hidden">
@@ -1535,6 +1526,7 @@ function App() {
             </div>
           </section>
         </div>
+      </div>
 
         {/* Shopify Queue Section */}
         {/* Shopify Hub Panel */}
@@ -1665,15 +1657,13 @@ function App() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
 
         {/* Shopify Dashboard Modal */}
         {(showPublishDashboard || selectedQueueIndex !== null) && (
           <PublishDashboard
-            productData={(selectedQueueIndex !== null 
+            productData={((selectedQueueIndex !== null 
               ? parseProductName(shopifyQueue[selectedQueueIndex].images[0].filename)
-              : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '')) as any
-            }
+              : parseProductName(Object.values(selectedProduct?.components || {})[0]?.[0]?.name || '')) as any)}
             mockupImages={selectedQueueIndex !== null ? shopifyQueue[selectedQueueIndex].images : mockupImages}
             onPublish={async (formData, logCallback) => {
               const res = await (selectedQueueIndex !== null 
@@ -2117,6 +2107,7 @@ function App() {
           </div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
