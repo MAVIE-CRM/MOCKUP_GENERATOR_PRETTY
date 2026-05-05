@@ -2107,6 +2107,7 @@ function App() {
           </div>
         )}
       </AnimatePresence>
+        </div>
       </div>
     </div>
   );
